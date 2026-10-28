@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  kali:
+    image: kalilinux/kali-rolling:latest
+    container_name: osint_me_kali
+    tty: true
+    stdin_open: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./tools:/tools
+      - ./workspace:/workspace
+    working_dir: /workspace
+    command: /bin/bash
