@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # osint-flow.sh - Smart OSINT pivoting workflow
-# Designed for the osint_me kali container with phoneinfoga, ignorant, holehe, maigret, sherlock, scylla
+# Designed for the osint_me kali container with phoneinfoga, ignorant, holehe, maigret, and sherlock
 
 set -e
 
@@ -16,9 +16,16 @@ NC='\033[0m'
 
 # Directories
 WORKSPACE="${WORKSPACE:-/workspace}"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-CASE_DIR="$WORKSPACE/osint-$TIMESTAMP"
-mkdir -p "$CASE_DIR"
+if [ "$#" -gt 1 ]; then
+    echo "Usage: osint [username]" >&2
+    exit 2
+fi
+if ! mkdir -p "$WORKSPACE" || ! CASE_DIR=$(mktemp -d "$WORKSPACE/osint-$(date +%Y%m%d_%H%M%S)-XXXXXX" 2>/dev/null); then
+    echo "Cannot create a case in $WORKSPACE. Check that the workspace is writable." >&2
+    echo "The dashboard container is read-only. Run from your host: docker compose run --rm kali osint [username]" >&2
+    exit 1
+fi
+CASE_STORE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/case_store.py"
 
 # Tool paths
 PHONEINFOGA=$(command -v phoneinfoga 2>/dev/null || echo "")
@@ -26,11 +33,25 @@ IGNORANT=$(command -v ignorant 2>/dev/null || echo "")
 HOLEHE=$(command -v holehe 2>/dev/null || echo "")
 MAIGRET=$(command -v maigret 2>/dev/null || echo "")
 SHERLOCK=$(command -v sherlock 2>/dev/null || echo "")
-SCYLLA=$(command -v scylla 2>/dev/null || echo "")
 
 declare -a DISCOVERED_USERNAMES=()
 declare -a DISCOVERED_EMAILS=()
 declare -a DISCOVERED_PHONES=()
+
+record_identifier() {
+    python3 "$CASE_STORE" identifier "$CASE_DIR" "$1" "$2"
+}
+
+run_scan() {
+    local kind="$1" target="$2" tool="$3" status=0
+    shift 3
+    SCAN_FILE=$(mktemp "$CASE_DIR/${tool}_XXXXXX.txt")
+    if (set -o pipefail; "$@" 2>&1 | tee "$SCAN_FILE"); then :; else status=$?; fi
+    python3 "$CASE_STORE" scan "$CASE_DIR" "$kind" "$target" "$tool" "$(basename "$SCAN_FILE")" "$status"
+    if [ "$status" -ne 0 ]; then
+        echo -e "${RED}[!] $tool failed; see $(basename "$SCAN_FILE")${NC}"
+    fi
+}
 
 banner() {
     clear
@@ -54,7 +75,6 @@ check_tools() {
     [ -n "$HOLEHE" ] && echo -e "  ${GREEN}[+]${NC} holehe" || echo -e "  ${RED}[-]${NC} holehe (not found)"
     [ -n "$MAIGRET" ] && echo -e "  ${GREEN}[+]${NC} maigret" || echo -e "  ${RED}[-]${NC} maigret (not found)"
     [ -n "$SHERLOCK" ] && echo -e "  ${GREEN}[+]${NC} sherlock" || echo -e "  ${RED}[-]${NC} sherlock (not found)"
-    [ -n "$SCYLLA" ] && echo -e "  ${GREEN}[+]${NC} scylla" || echo -e "  ${RED}[-]${NC} scylla (not found)"
     echo ""
     sleep 1
 }
@@ -62,7 +82,7 @@ check_tools() {
 extract_usernames_from_file() {
     local file="$1"
     [ ! -f "$file" ] && return
-    grep -oP '(?<=@)[a-zA-Z0-9_.-]+' "$file" 2>/dev/null >> "$CASE_DIR/.tmp_usernames" || true
+    grep -oP '(?<![a-zA-Z0-9._%+-])@\K[a-zA-Z0-9_.-]+' "$file" 2>/dev/null >> "$CASE_DIR/.tmp_usernames" || true
     grep -oP '"username":\s*"\K[^"]+' "$file" 2>/dev/null >> "$CASE_DIR/.tmp_usernames" || true
     grep -oP 'username[:\s]+\K[a-zA-Z0-9_.-]+' "$file" 2>/dev/null >> "$CASE_DIR/.tmp_usernames" || true
 }
@@ -85,19 +105,25 @@ phone_flow() {
     echo ""
     if [ -n "${1:-}" ]; then PHONE_NUM=$1; else read -r -p "Enter phone number (with country code, e.g. +1234567890): " PHONE_NUM; fi
     DISCOVERED_PHONES+=("$PHONE_NUM")
+    record_identifier phone "$PHONE_NUM"
     echo "$PHONE_NUM" > "$CASE_DIR/target_phone.txt"
     
     if [ -n "$PHONEINFOGA" ]; then
         echo -e "\n${YELLOW}[>] Running PhoneInfoga...${NC}"
-        $PHONEINFOGA scan -n "$PHONE_NUM" 2>&1 | tee "$CASE_DIR/phoneinfoga_scan.txt" || true
-        extract_emails_from_file "$CASE_DIR/phoneinfoga_scan.txt"
+        run_scan phone "$PHONE_NUM" phoneinfoga "$PHONEINFOGA" scan -n "$PHONE_NUM"
+        extract_emails_from_file "$SCAN_FILE"
     fi
     
     if [ -n "$IGNORANT" ]; then
         echo -e "\n${YELLOW}[>] Running Ignorant (phone -> social accounts)...${NC}"
-        $IGNORANT "$PHONE_NUM" 2>&1 | tee "$CASE_DIR/ignorant_scan.txt" || true
-        extract_usernames_from_file "$CASE_DIR/ignorant_scan.txt"
-        extract_emails_from_file "$CASE_DIR/ignorant_scan.txt"
+        read -r -p "Enter the country calling code (e.g. +1): " country_code
+        if [[ "$country_code" =~ ^\+[0-9]{1,3}$ && "$PHONE_NUM" == "$country_code"* && "$PHONE_NUM" != "$country_code" ]]; then
+            run_scan phone "$PHONE_NUM" ignorant "$IGNORANT" "$country_code" "${PHONE_NUM#"$country_code"}"
+            extract_usernames_from_file "$SCAN_FILE"
+            extract_emails_from_file "$SCAN_FILE"
+        else
+            echo -e "${RED}[!] Invalid country code for this number; skipping Ignorant${NC}"
+        fi
     fi
     
     deduplicate_pivots
@@ -106,23 +132,22 @@ phone_flow() {
 username_flow() {
     echo -e "${CYAN}[*] Username Investigation${NC}"
     echo ""
-    read -p "Enter username: " USERNAME
+    if [ -n "${1:-}" ]; then USERNAME=$1; else read -r -p "Enter username: " USERNAME; fi
     DISCOVERED_USERNAMES+=("$USERNAME")
+    record_identifier username "$USERNAME"
     echo "$USERNAME" > "$CASE_DIR/target_username.txt"
     
     if [ -n "$MAIGRET" ]; then
         echo -e "\n${YELLOW}[>] Running Maigret (comprehensive)...${NC}"
-        if ! (set -o pipefail; "$MAIGRET" "$USERNAME" --timeout 10 2>&1 | tee "$CASE_DIR/maigret_scan.txt"); then
-            echo -e "${RED}[!] Maigret failed; see maigret_scan.txt${NC}"
-        fi
-        extract_usernames_from_file "$CASE_DIR/maigret_scan.txt"
-        extract_emails_from_file "$CASE_DIR/maigret_scan.txt"
+        run_scan username "$USERNAME" maigret "$MAIGRET" "$USERNAME" --timeout 10
+        extract_usernames_from_file "$SCAN_FILE"
+        extract_emails_from_file "$SCAN_FILE"
     fi
     
     if [ -n "$SHERLOCK" ]; then
         echo -e "\n${YELLOW}[>] Running Sherlock...${NC}"
-        $SHERLOCK "$USERNAME" 2>&1 | tee "$CASE_DIR/sherlock_scan.txt" || true
-        extract_usernames_from_file "$CASE_DIR/sherlock_scan.txt"
+        run_scan username "$USERNAME" sherlock "$SHERLOCK" "$USERNAME"
+        extract_usernames_from_file "$SCAN_FILE"
     fi
     
     deduplicate_pivots
@@ -133,19 +158,13 @@ email_flow() {
     echo ""
     read -p "Enter email address: " EMAIL
     DISCOVERED_EMAILS+=("$EMAIL")
+    record_identifier email "$EMAIL"
     echo "$EMAIL" > "$CASE_DIR/target_email.txt"
     
     if [ -n "$HOLEHE" ]; then
         echo -e "\n${YELLOW}[>] Running Holehe (email -> registered sites)...${NC}"
-        $HOLEHE "$EMAIL" 2>&1 | tee "$CASE_DIR/holehe_scan.txt" || true
-        extract_usernames_from_file "$CASE_DIR/holehe_scan.txt"
-    fi
-    
-    if [ -n "$SCYLLA" ]; then
-        echo -e "\n${YELLOW}[>] Running Scylla for additional data...${NC}"
-        $SCYLLA -e "$EMAIL" 2>&1 | tee "$CASE_DIR/scylla_scan.txt" || true
-        extract_usernames_from_file "$CASE_DIR/scylla_scan.txt"
-        extract_emails_from_file "$CASE_DIR/scylla_scan.txt"
+        run_scan email "$EMAIL" holehe "$HOLEHE" "$EMAIL"
+        extract_usernames_from_file "$SCAN_FILE"
     fi
     
     deduplicate_pivots
@@ -153,21 +172,25 @@ email_flow() {
 
 username_flow_from_pivot() {
     echo -e "\n${YELLOW}[>] Pivoting on username: $USERNAME${NC}"
-    [ -n "$MAIGRET" ] && $MAIGRET "$USERNAME" --timeout 10 2>&1 | tee "$CASE_DIR/maigret_pivot_${USERNAME}.txt" || true
-    [ -n "$SHERLOCK" ] && $SHERLOCK "$USERNAME" 2>&1 | tee "$CASE_DIR/sherlock_pivot_${USERNAME}.txt" || true
-    extract_usernames_from_file "$CASE_DIR/maigret_pivot_${USERNAME}.txt" 2>/dev/null
-    extract_emails_from_file "$CASE_DIR/maigret_pivot_${USERNAME}.txt" 2>/dev/null
-    extract_usernames_from_file "$CASE_DIR/sherlock_pivot_${USERNAME}.txt" 2>/dev/null
+    record_identifier username "$USERNAME"
+    if [ -n "$MAIGRET" ]; then
+        run_scan username "$USERNAME" maigret "$MAIGRET" "$USERNAME" --timeout 10
+        extract_usernames_from_file "$SCAN_FILE"; extract_emails_from_file "$SCAN_FILE"
+    fi
+    if [ -n "$SHERLOCK" ]; then
+        run_scan username "$USERNAME" sherlock "$SHERLOCK" "$USERNAME"
+        extract_usernames_from_file "$SCAN_FILE"
+    fi
     deduplicate_pivots
 }
 
 email_flow_from_pivot() {
     echo -e "\n${YELLOW}[>] Pivoting on email: $EMAIL${NC}"
-    [ -n "$HOLEHE" ] && $HOLEHE "$EMAIL" 2>&1 | tee "$CASE_DIR/holehe_pivot_${EMAIL//[@.]/_}.txt" || true
-    [ -n "$SCYLLA" ] && $SCYLLA -e "$EMAIL" 2>&1 | tee "$CASE_DIR/scylla_pivot_${EMAIL//[@.]/_}.txt" || true
-    extract_usernames_from_file "$CASE_DIR/holehe_pivot_${EMAIL//[@.]/_}.txt" 2>/dev/null
-    extract_usernames_from_file "$CASE_DIR/scylla_pivot_${EMAIL//[@.]/_}.txt" 2>/dev/null
-    extract_emails_from_file "$CASE_DIR/scylla_pivot_${EMAIL//[@.]/_}.txt" 2>/dev/null
+    record_identifier email "$EMAIL"
+    if [ -n "$HOLEHE" ]; then
+        run_scan email "$EMAIL" holehe "$HOLEHE" "$EMAIL"
+        extract_usernames_from_file "$SCAN_FILE"
+    fi
     deduplicate_pivots
 }
 
@@ -179,17 +202,14 @@ aggressive_pivot() {
     for uname in "${DISCOVERED_USERNAMES[@]}"; do
         [ -z "$uname" ] && continue
         echo -e "\n${CYAN}[*] Aggressive scan: $uname${NC}"
-        [ -n "$MAIGRET" ] && $MAIGRET "$uname" --timeout 8 2>&1 | tee "$CASE_DIR/aggressive_maigret_$uname.txt" >/dev/null || true
-        [ -n "$SHERLOCK" ] && $SHERLOCK "$uname" 2>&1 | tee "$CASE_DIR/aggressive_sherlock_$uname.txt" >/dev/null || true
-        extract_usernames_from_file "$CASE_DIR/aggressive_maigret_$uname.txt" 2>/dev/null
-        extract_emails_from_file "$CASE_DIR/aggressive_maigret_$uname.txt" 2>/dev/null
-        extract_usernames_from_file "$CASE_DIR/aggressive_sherlock_$uname.txt" 2>/dev/null
+        USERNAME="$uname"
+        username_flow_from_pivot
     done
     for em in "${DISCOVERED_EMAILS[@]}"; do
         [ -z "$em" ] && continue
         echo -e "\n${CYAN}[*] Aggressive scan: $em${NC}"
-        [ -n "$HOLEHE" ] && $HOLEHE "$em" 2>&1 | tee "$CASE_DIR/aggressive_holehe_${em//[@.]/_}.txt" >/dev/null || true
-        [ -n "$SCYLLA" ] && $SCYLLA -e "$em" 2>&1 | tee "$CASE_DIR/aggressive_scylla_${em//[@.]/_}.txt" >/dev/null || true
+        EMAIL="$em"
+        email_flow_from_pivot
     done
     deduplicate_pivots
     echo -e "\n${GREEN}[+] Aggressive pivot complete${NC}"
@@ -206,10 +226,13 @@ load_pivots() {
         [[ -z "$line" || "$line" =~ ^# ]] && continue
         if [[ "$line" =~ @ ]]; then
             DISCOVERED_EMAILS+=("$line")
+            record_identifier email "$line"
         elif [[ "$line" =~ ^\+?[0-9]{7,15}$ ]]; then
             DISCOVERED_PHONES+=("$line")
+            record_identifier phone "$line"
         else
             DISCOVERED_USERNAMES+=("$line")
+            record_identifier username "$line"
         fi
     done < "$pivot_file"
     deduplicate_pivots
@@ -279,4 +302,8 @@ main_menu() {
 }
 
 trap 'rm -f "$CASE_DIR/.tmp_usernames" "$CASE_DIR/.tmp_emails" 2>/dev/null' EXIT
+if [ "$#" -eq 1 ]; then
+    username_flow "$1"
+    pivot_menu
+fi
 main_menu

@@ -1,18 +1,26 @@
-version: '3.8'
-
 services:
   kali:
-    image: kalilinux/kali-rolling:latest
+    image: osint_me:local
+    build:
+      context: .
     container_name: osint_me_kali
     tty: true
     stdin_open: true
     ports:
       - "8080:8080"
     volumes:
-      - ./tools:/tools
       - ./workspace:/workspace
-      - ./scripts:/scripts:ro
-      - ./repos.yml:/repos.yml:ro
     working_dir: /workspace
-    entrypoint: ["/bin/bash", "/scripts/install-tools.sh"]
     command: ["bash", "-l"]
+  dashboard:
+    image: osint_me:local
+    depends_on:
+      - kali
+    command: ["python3", "/dashboard/server.py"]
+    ports:
+      - "127.0.0.1:8765:8080"
+    volumes:
+      - ./workspace:/workspace:ro
+    read_only: true
+    cap_drop:
+      - ALL

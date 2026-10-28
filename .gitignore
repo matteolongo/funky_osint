@@ -1,2 +1,4 @@
 /tools/
 /workspace/
+__pycache__/
+*.py[cod]

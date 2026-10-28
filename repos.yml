@@ -11,9 +11,12 @@ tools:
         - git
         - ca-certificates
         - golang-go
+        - nodejs
+        - build-essential
       pre_cmds: []
       cmds:
         - go mod download
+        - cd web/client && node .yarn/releases/yarn-3.2.4.cjs install --immutable && NODE_OPTIONS=--openssl-legacy-provider node .yarn/releases/yarn-3.2.4.cjs build && cd ../..
         - go build -ldflags="-s -w" -o /usr/local/bin/phoneinfoga .
     check_bin: phoneinfoga
 
@@ -29,9 +32,7 @@ tools:
         - python3-pip
       pre_cmds: []
       cmds:
-        - pip3 install --no-cache-dir -r requirements.txt
-        - pip3 install --no-cache-dir . 2>/dev/null || true
-        - command -v sherlock >/dev/null 2>&1 || ln -sf /tools/sherlock/sherlock_project/__main__.py /usr/local/bin/sherlock 2>/dev/null || ln -sf /tools/sherlock/sherlock.py /usr/local/bin/sherlock 2>/dev/null || (printf '#!/usr/bin/env bash\nexec python3 /tools/sherlock/sherlock.py "$@"\n' > /usr/local/bin/sherlock && chmod +x /usr/local/bin/sherlock)
+        - pip3 install --no-cache-dir .
     check_bin: sherlock
 
   - name: maigret
@@ -46,7 +47,6 @@ tools:
         - python3-pip
       pre_cmds: []
       cmds:
-        - pip3 install --no-cache-dir -r requirements.txt
         - pip3 install --no-cache-dir .
     check_bin: maigret
 
@@ -79,20 +79,3 @@ tools:
       cmds:
         - pip3 install --no-cache-dir .
     check_bin: ignorant
-
-  - name: scylla
-    repo: https://github.com/DoubleThreatSecurity/Scylla.git
-    ref: main
-    dest: /tools/Scylla
-    enabled: true
-    build:
-      apt_deps:
-        - git
-        - python3
-        - python3-pip
-      pre_cmds: []
-      cmds:
-        - pip3 install --no-cache-dir -r requirements.txt
-        - printf '#!/usr/bin/env bash\nexec python3 /tools/Scylla/scylla.py "$@"\n' > /usr/local/bin/scylla
-        - chmod +x /usr/local/bin/scylla
-    check_bin: scylla

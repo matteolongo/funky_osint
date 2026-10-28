@@ -90,7 +90,7 @@ EOF
 
   echo "[install-tools] Installing $name from $repo"
 
-  if [ -n "$apt_deps" ] && [ "$apt_deps" != "null" ] && [ "$apt_deps" != " " ]; then
+  if [ "${INSTALL_SKIP_APT:-0}" != "1" ] && [ -n "$apt_deps" ] && [ "$apt_deps" != "null" ] && [ "$apt_deps" != " " ]; then
     apt-get update -qq
     apt-get install -y -qq $apt_deps >/dev/null 2>&1 || apt-get install -y $apt_deps
   fi
@@ -113,7 +113,7 @@ EOF
       pcmd=$(yq -r ".tools[$i].build.pre_cmds[$j]" "$REPOS_FILE")
       [ "$pcmd" = "null" ] && j=$((j+1)) && continue
       echo "[install-tools]   pre: $pcmd"
-      eval "$pcmd" || true
+      eval "$pcmd"
       j=$((j+1))
     done
     j=0
@@ -121,7 +121,7 @@ EOF
       cmd=$(yq -r ".tools[$i].build.cmds[$j]" "$REPOS_FILE")
       [ "$cmd" = "null" ] && j=$((j+1)) && continue
       echo "[install-tools]   run: $cmd"
-      eval "$cmd" || echo "[install-tools]   FAILED: $cmd"
+      eval "$cmd"
       j=$((j+1))
     done
   elif [ "$PARSER" = "pyyaml" ]; then
@@ -134,19 +134,19 @@ b=t.get('build') or {}
 os.chdir('$dest')
 for pcmd in b.get('pre_cmds') or []:
     print('[install-tools]   pre:',pcmd)
-    subprocess.call(pcmd, shell=True)
+    subprocess.check_call(pcmd, shell=True)
 for cmd in b.get('cmds') or []:
     print('[install-tools]   run:',cmd)
-    r=subprocess.call(cmd, shell=True)
-    if r!=0: print('[install-tools]   FAILED:',cmd)
-" || true
+    subprocess.check_call(cmd, shell=True)
+"
   fi
   cd - >/dev/null
 
   if [ -n "$check_bin" ] && [ "$check_bin" != "null" ] && command -v "$check_bin" >/dev/null 2>&1; then
     echo "[install-tools] $name ready: $(command -v $check_bin)"
   else
-    echo "[install-tools] $name build finished (check PATH /usr/local/bin)"
+    echo "[install-tools] $name installation did not produce $check_bin" >&2
+    exit 1
   fi
 
   i=$((i+1))
@@ -154,6 +154,7 @@ done
 
 # Install osint workflow helper
 if [ -f /scripts/osint-flow.sh ]; then
+  [ ! -L "$BIN_DIR/osint" ] || rm -f "$BIN_DIR/osint"
   printf '#!/usr/bin/env bash\nexec bash /scripts/osint-flow.sh "$@"\n' > "$BIN_DIR/osint"
   chmod +x "$BIN_DIR/osint"
   echo "[install-tools] Installed 'osint' helper"
