@@ -1,0 +1,112 @@
+# repos.yml
+# Tools to auto-install inside the Kali container on first start
+tools:
+  - name: phoneinfoga
+    repo: https://github.com/sundowndev/phoneinfoga.git
+    ref: master
+    dest: /tools/phoneinfoga
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - ca-certificates
+        - golang-go
+      pre_cmds: []
+      cmds:
+        - go mod download
+        - go build -ldflags="-s -w" -o /usr/local/bin/phoneinfoga .
+    check_bin: phoneinfoga
+
+  - name: rrgen
+    repo: https://github.com/josh0xA/rrgen.git
+    ref: main
+    dest: /tools/rrgen
+    enabled: false
+    build:
+      apt_deps:
+        - git
+        - build-essential
+        - make
+      pre_cmds: []
+      cmds: []
+    check_bin: rrgen
+
+  - name: sherlock
+    repo: https://github.com/sherlock-project/sherlock.git
+    ref: master
+    dest: /tools/sherlock
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - python3
+        - python3-pip
+      pre_cmds: []
+      cmds:
+        - pip3 install --no-cache-dir -r requirements.txt
+        - pip3 install --no-cache-dir . 2>/dev/null || true
+        - command -v sherlock >/dev/null 2>&1 || ln -sf /tools/sherlock/sherlock_project/__main__.py /usr/local/bin/sherlock 2>/dev/null || ln -sf /tools/sherlock/sherlock.py /usr/local/bin/sherlock 2>/dev/null || (printf '#!/usr/bin/env bash\nexec python3 /tools/sherlock/sherlock.py "$@"\n' > /usr/local/bin/sherlock && chmod +x /usr/local/bin/sherlock)
+    check_bin: sherlock
+
+  - name: maigret
+    repo: https://github.com/soxoj/maigret.git
+    ref: main
+    dest: /tools/maigret
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - python3
+        - python3-pip
+      pre_cmds: []
+      cmds:
+        - pip3 install --no-cache-dir -r requirements.txt
+        - pip3 install --no-cache-dir .
+    check_bin: maigret
+
+  - name: holehe
+    repo: https://github.com/megadose/holehe.git
+    ref: master
+    dest: /tools/holehe
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - python3
+        - python3-pip
+      pre_cmds: []
+      cmds:
+        - pip3 install --no-cache-dir .
+    check_bin: holehe
+
+  - name: ignorant
+    repo: https://github.com/megadose/ignorant.git
+    ref: master
+    dest: /tools/ignorant
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - python3
+        - python3-pip
+      pre_cmds: []
+      cmds:
+        - pip3 install --no-cache-dir .
+    check_bin: ignorant
+
+  - name: scylla
+    repo: https://github.com/DoubleThreatSecurity/Scylla.git
+    ref: main
+    dest: /tools/Scylla
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - python3
+        - python3-pip
+      pre_cmds: []
+      cmds:
+        - pip3 install --no-cache-dir -r requirements.txt
+        - printf '#!/usr/bin/env bash\nexec python3 /tools/Scylla/scylla.py "$@"\n' > /usr/local/bin/scylla
+        - chmod +x /usr/local/bin/scylla
+    check_bin: scylla
