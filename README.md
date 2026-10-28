@@ -9,7 +9,7 @@ osint_me/
 ├── docker-compose.yml  # Container config (mounts scripts/repos.yml, runs installer)
 ├── repos.yml           # List of repos to clone/build on container startup
 ├── scripts/
-│   ├── install-tools.sh # Auto-installer (reads repos.yml, builds tools, symlinks osint)
+│   ├── install-tools.sh # Auto-installer (reads repos.yml, builds tools, installs osint)
 │   └── osint-flow.sh    # Smart pivoting workflow (phone -> username -> email etc.)
 ├── tools/              # Cloned tools live here (mounted to /tools in container)
 └── workspace/          # Investigation outputs (mounted to /workspace in container)
@@ -25,7 +25,6 @@ osint_me/
 | [holehe](https://github.com/megadose/holehe) | Email -> sites it's registered on | `holehe` |
 | [ignorant](https://github.com/megadose/ignorant) | Phone number -> social accounts/platform registrations | `ignorant` |
 | [scylla](https://github.com/DoubleThreatSecurity/Scylla) | Username/email/phone OSINT aggregation | `scylla` |
-| [rrgen](https://github.com/josh0xA/rrgen) | Header-only C++ library (disabled as CLI) | N/A |
 
 ## Quick Start
 
@@ -40,7 +39,7 @@ On first start, `install-tools.sh` will:
 - Install minimal dependencies (git, python3, pip, golang, build tools as needed)
 - Clone/update repos from `repos.yml`
 - Build/install tools and put binaries in `/usr/local/bin`
-- Symlink the workflow script as `osint`
+- Install a launcher for the workflow script as `osint`
 
 This can take several minutes on first run depending on network/speed.
 
@@ -86,12 +85,22 @@ Or run the script directly:
 ### Load existing pivots
 `osint` → `4) Load pivots from file` and provide a file with one identifier per line (phone, email, or username). Lines starting with `#` are ignored.
 
+Imported phone numbers can be selected from the pivot menu. Extracted identifiers are pattern matches and should be verified before treating them as linked accounts.
+
 ## Outputs
 
 All results are saved under `/workspace/osint-YYYYMMDD_HHMMSS/` with:
 - Raw tool outputs (e.g. `maigret_scan.txt`, `ignorant_scan.txt`, `holehe_scan.txt`)
 - Pivot lists (`pivot_usernames.txt`, `pivot_emails.txt`)
 - Target files for each starting point
+
+Repeating a scan for the same identifier can overwrite its existing output in the current case. The workspace is mounted on the host, so results persist after the container stops.
+
+## Extending and testing
+
+Add installation details to `repos.yml` to install another tool. To use it in the interactive workflow, also add its invocation and any output extraction to `scripts/osint-flow.sh`; installation alone does not add a menu action. Keep tool failures isolated so other searches can continue.
+
+Run the focused workflow checks with `bash tests/osint-flow-test.sh` and check shell syntax with `bash -n scripts/*.sh tests/*.sh`. The checks use temporary files and a fake failing Maigret command; they do not query external services. Set `WORKSPACE` to change where the workflow writes cases (the default is `/workspace`).
 
 ## Tips
 

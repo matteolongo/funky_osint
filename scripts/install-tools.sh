@@ -6,6 +6,7 @@ TOOLS_DIR="/tools"
 BIN_DIR="/usr/local/bin"
 
 export DEBIAN_FRONTEND=noninteractive
+export PIP_BREAK_SYSTEM_PACKAGES=1
 
 echo "[install-tools] Starting tool installer..."
 
@@ -54,13 +55,13 @@ while [ $i -lt $count ]; do
     pre_cmds_count=$(yq ".tools[$i].build.pre_cmds | length" "$REPOS_FILE")
     cmds_count=$(yq ".tools[$i].build.cmds | length" "$REPOS_FILE")
   elif [ "$PARSER" = "pyyaml" ]; then
-    read -r enabled name repo ref dest check_bin apt_deps pre_cmds_count cmds_count <<EOF
+    IFS=$'\t' read -r enabled name repo ref dest check_bin apt_deps pre_cmds_count cmds_count <<EOF
 $(python3 -c "
 import yaml
 with open('$REPOS_FILE') as f:
     d=yaml.safe_load(f)
 t=d['tools'][$i]
-enabled=t.get('enabled',True)
+enabled='true' if t.get('enabled',True) else 'false'
 name=t.get('name','')
 repo=t.get('repo','')
 ref=t.get('ref','')
@@ -70,7 +71,7 @@ b=t.get('build') or {}
 apt=' '.join(b.get('apt_deps') or [])
 pre=len(b.get('pre_cmds') or [])
 cmds=len(b.get('cmds') or [])
-print(enabled,name,repo,ref,dest,check_bin,apt,pre,cmds)
+print('\t'.join(str(x) for x in [enabled,name,repo,ref,dest,check_bin,apt,pre,cmds]))
 ")
 EOF
   else
@@ -153,8 +154,8 @@ done
 
 # Install osint workflow helper
 if [ -f /scripts/osint-flow.sh ]; then
-  ln -sf /scripts/osint-flow.sh /usr/local/bin/osint
-  chmod +x /usr/local/bin/osint
+  printf '#!/usr/bin/env bash\nexec bash /scripts/osint-flow.sh "$@"\n' > "$BIN_DIR/osint"
+  chmod +x "$BIN_DIR/osint"
   echo "[install-tools] Installed 'osint' helper"
 fi
 

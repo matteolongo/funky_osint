@@ -17,20 +17,6 @@ tools:
         - go build -ldflags="-s -w" -o /usr/local/bin/phoneinfoga .
     check_bin: phoneinfoga
 
-  - name: rrgen
-    repo: https://github.com/josh0xA/rrgen.git
-    ref: main
-    dest: /tools/rrgen
-    enabled: false
-    build:
-      apt_deps:
-        - git
-        - build-essential
-        - make
-      pre_cmds: []
-      cmds: []
-    check_bin: rrgen
-
   - name: sherlock
     repo: https://github.com/sherlock-project/sherlock.git
     ref: master

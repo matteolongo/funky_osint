@@ -15,7 +15,7 @@ MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 # Directories
-WORKSPACE="/workspace"
+WORKSPACE="${WORKSPACE:-/workspace}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 CASE_DIR="$WORKSPACE/osint-$TIMESTAMP"
 mkdir -p "$CASE_DIR"
@@ -74,14 +74,16 @@ extract_emails_from_file() {
 }
 
 deduplicate_pivots() {
-    [ -f "$CASE_DIR/.tmp_usernames" ] && sort -u "$CASE_DIR/.tmp_usernames" | grep -v '^$' > "$CASE_DIR/pivot_usernames.txt" && mapfile -t DISCOVERED_USERNAMES < "$CASE_DIR/pivot_usernames.txt"
-    [ -f "$CASE_DIR/.tmp_emails" ] && sort -u "$CASE_DIR/.tmp_emails" | grep -v '^$' > "$CASE_DIR/pivot_emails.txt" && mapfile -t DISCOVERED_EMAILS < "$CASE_DIR/pivot_emails.txt"
+    { printf '%s\n' "${DISCOVERED_USERNAMES[@]}"; cat "$CASE_DIR/.tmp_usernames" 2>/dev/null || true; } | sed '/^$/d' | sort -u > "$CASE_DIR/pivot_usernames.txt"
+    { printf '%s\n' "${DISCOVERED_EMAILS[@]}"; cat "$CASE_DIR/.tmp_emails" 2>/dev/null || true; } | sed '/^$/d' | sort -u > "$CASE_DIR/pivot_emails.txt"
+    mapfile -t DISCOVERED_USERNAMES < "$CASE_DIR/pivot_usernames.txt"
+    mapfile -t DISCOVERED_EMAILS < "$CASE_DIR/pivot_emails.txt"
 }
 
 phone_flow() {
     echo -e "${CYAN}[*] Phone Number Investigation${NC}"
     echo ""
-    read -p "Enter phone number (with country code, e.g. +1234567890): " PHONE_NUM
+    if [ -n "${1:-}" ]; then PHONE_NUM=$1; else read -r -p "Enter phone number (with country code, e.g. +1234567890): " PHONE_NUM; fi
     DISCOVERED_PHONES+=("$PHONE_NUM")
     echo "$PHONE_NUM" > "$CASE_DIR/target_phone.txt"
     
@@ -99,7 +101,6 @@ phone_flow() {
     fi
     
     deduplicate_pivots
-    pivot_menu
 }
 
 username_flow() {
@@ -111,7 +112,9 @@ username_flow() {
     
     if [ -n "$MAIGRET" ]; then
         echo -e "\n${YELLOW}[>] Running Maigret (comprehensive)...${NC}"
-        $MAIGRET "$USERNAME" --timeout 10 2>&1 | tee "$CASE_DIR/maigret_scan.txt" || $MAIGRET "$USERNAME" --timeout 10 -a 2>&1 | tee "$CASE_DIR/maigret_scan.txt" || true
+        if ! (set -o pipefail; "$MAIGRET" "$USERNAME" --timeout 10 2>&1 | tee "$CASE_DIR/maigret_scan.txt"); then
+            echo -e "${RED}[!] Maigret failed; see maigret_scan.txt${NC}"
+        fi
         extract_usernames_from_file "$CASE_DIR/maigret_scan.txt"
         extract_emails_from_file "$CASE_DIR/maigret_scan.txt"
     fi
@@ -123,7 +126,6 @@ username_flow() {
     fi
     
     deduplicate_pivots
-    pivot_menu
 }
 
 email_flow() {
@@ -147,7 +149,6 @@ email_flow() {
     fi
     
     deduplicate_pivots
-    pivot_menu
 }
 
 username_flow_from_pivot() {
@@ -158,7 +159,6 @@ username_flow_from_pivot() {
     extract_emails_from_file "$CASE_DIR/maigret_pivot_${USERNAME}.txt" 2>/dev/null
     extract_usernames_from_file "$CASE_DIR/sherlock_pivot_${USERNAME}.txt" 2>/dev/null
     deduplicate_pivots
-    pivot_menu
 }
 
 email_flow_from_pivot() {
@@ -169,7 +169,6 @@ email_flow_from_pivot() {
     extract_usernames_from_file "$CASE_DIR/scylla_pivot_${EMAIL//[@.]/_}.txt" 2>/dev/null
     extract_emails_from_file "$CASE_DIR/scylla_pivot_${EMAIL//[@.]/_}.txt" 2>/dev/null
     deduplicate_pivots
-    pivot_menu
 }
 
 aggressive_pivot() {
@@ -194,10 +193,30 @@ aggressive_pivot() {
     done
     deduplicate_pivots
     echo -e "\n${GREEN}[+] Aggressive pivot complete${NC}"
-    pivot_menu
+}
+
+load_pivots() {
+    local pivot_file line
+    read -r -p "Path to file with usernames/emails/phones: " pivot_file
+    if [ ! -f "$pivot_file" ]; then
+        echo -e "${RED}[!] File not found${NC}"
+        return 1
+    fi
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        if [[ "$line" =~ @ ]]; then
+            DISCOVERED_EMAILS+=("$line")
+        elif [[ "$line" =~ ^\+?[0-9]{7,15}$ ]]; then
+            DISCOVERED_PHONES+=("$line")
+        else
+            DISCOVERED_USERNAMES+=("$line")
+        fi
+    done < "$pivot_file"
+    deduplicate_pivots
 }
 
 pivot_menu() {
+    while true; do
     deduplicate_pivots
     echo ""
     echo -e "${GREEN}============================================================${NC}"
@@ -205,6 +224,7 @@ pivot_menu() {
     echo -e "${GREEN}============================================================${NC}"
     [ ${#DISCOVERED_USERNAMES[@]} -gt 0 ] && echo -e "${CYAN}Usernames:${NC} ${DISCOVERED_USERNAMES[*]}"
     [ ${#DISCOVERED_EMAILS[@]} -gt 0 ] && echo -e "${CYAN}Emails:${NC} ${DISCOVERED_EMAILS[*]}"
+    [ ${#DISCOVERED_PHONES[@]} -gt 0 ] && echo -e "${CYAN}Phones:${NC} ${DISCOVERED_PHONES[*]}"
     echo ""
     echo "What would you like to pivot to?"
     echo "1) Investigate a discovered username"
@@ -216,23 +236,27 @@ pivot_menu() {
     echo "7) View all results so far"
     echo "8) Back to main menu"
     echo "9) Exit"
+    echo "10) Investigate a discovered phone number"
     echo ""
-    read -p "Choice [1-9]: " choice
+    read -r -p "Choice [1-10]: " choice
     case $choice in
-        1) if [ ${#DISCOVERED_USERNAMES[@]} -eq 0 ]; then echo -e "${RED}[!] No usernames discovered yet${NC}"; sleep 2; pivot_menu; return; fi; echo "Select username:"; select uname in "${DISCOVERED_USERNAMES[@]}" "Cancel"; do [ "$uname" = "Cancel" ] && break; [ -n "$uname" ] && { USERNAME="$uname"; username_flow_from_pivot; break; }; done ;;
-        2) if [ ${#DISCOVERED_EMAILS[@]} -eq 0 ]; then echo -e "${RED}[!] No emails discovered yet${NC}"; sleep 2; pivot_menu; return; fi; echo "Select email:"; select em in "${DISCOVERED_EMAILS[@]}" "Cancel"; do [ "$em" = "Cancel" ] && break; [ -n "$em" ] && { EMAIL="$em"; email_flow_from_pivot; break; }; done ;;
+        1) if [ ${#DISCOVERED_USERNAMES[@]} -eq 0 ]; then echo -e "${RED}[!] No usernames discovered yet${NC}"; continue; fi; echo "Select username:"; select uname in "${DISCOVERED_USERNAMES[@]}" "Cancel"; do [ "$uname" = "Cancel" ] && break; [ -n "$uname" ] && { USERNAME="$uname"; username_flow_from_pivot; break; }; done ;;
+        2) if [ ${#DISCOVERED_EMAILS[@]} -eq 0 ]; then echo -e "${RED}[!] No emails discovered yet${NC}"; continue; fi; echo "Select email:"; select em in "${DISCOVERED_EMAILS[@]}" "Cancel"; do [ "$em" = "Cancel" ] && break; [ -n "$em" ] && { EMAIL="$em"; email_flow_from_pivot; break; }; done ;;
         3) read -p "Enter username: " USERNAME; DISCOVERED_USERNAMES+=("$USERNAME"); username_flow_from_pivot ;;
         4) read -p "Enter email: " EMAIL; DISCOVERED_EMAILS+=("$EMAIL"); email_flow_from_pivot ;;
         5) phone_flow ;;
         6) aggressive_pivot ;;
-        7) echo -e "\n${CYAN}[*] Results in: $CASE_DIR${NC}"; ls -lh "$CASE_DIR" | tail -n +2; echo ""; read -p "Press enter to continue..."; pivot_menu ;;
-        8) main_menu ;;
+        7) echo -e "\n${CYAN}[*] Results in: $CASE_DIR${NC}"; ls -lh "$CASE_DIR" | tail -n +2; echo ""; read -r -p "Press enter to continue..." ;;
+        8) return ;;
         9) echo -e "${GREEN}Good hunting. Results saved to: $CASE_DIR${NC}"; exit 0 ;;
-        *) echo -e "${RED}[!] Invalid choice${NC}"; sleep 2; pivot_menu ;;
+        10) if [ ${#DISCOVERED_PHONES[@]} -eq 0 ]; then echo -e "${RED}[!] No phone numbers discovered yet${NC}"; continue; fi; echo "Select phone number:"; select phone in "${DISCOVERED_PHONES[@]}" "Cancel"; do [ "$phone" = "Cancel" ] && break; [ -n "$phone" ] && { phone_flow "$phone"; break; }; done ;;
+        *) echo -e "${RED}[!] Invalid choice${NC}" ;;
     esac
+    done
 }
 
 main_menu() {
+    while true; do
     banner
     check_tools
     echo -e "${CYAN}What do you have to start with?${NC}"
@@ -244,13 +268,14 @@ main_menu() {
     echo ""
     read -p "Choice [1-5]: " choice
     case $choice in
-        1) phone_flow ;;
-        2) username_flow ;;
-        3) email_flow ;;
-        4) echo ""; read -p "Path to file with usernames/emails/phones: " pivot_file; [ -f "$pivot_file" ] && while IFS= read -r line; do [[ -z "$line" || "$line" =~ ^# ]] && continue; if [[ "$line" =~ @ ]]; then DISCOVERED_EMAILS+=("$line"); elif [[ "$line" =~ ^\+?[0-9]{7,15}$ ]]; then DISCOVERED_PHONES+=("$line"); else DISCOVERED_USERNAMES+=("$line"); fi; done < "$pivot_file" && deduplicate_pivots && pivot_menu || { echo -e "${RED}[!] File not found${NC}"; sleep 2; main_menu; } ;;
+        1) phone_flow; pivot_menu ;;
+        2) username_flow; pivot_menu ;;
+        3) email_flow; pivot_menu ;;
+        4) if load_pivots; then pivot_menu; fi ;;
         5) echo -e "${GREEN}Good hunting. Results saved to: $CASE_DIR${NC}"; exit 0 ;;
-        *) echo -e "${RED}[!] Invalid choice${NC}"; sleep 2; main_menu ;;
+        *) echo -e "${RED}[!] Invalid choice${NC}" ;;
     esac
+    done
 }
 
 trap 'rm -f "$CASE_DIR/.tmp_usernames" "$CASE_DIR/.tmp_emails" 2>/dev/null' EXIT
