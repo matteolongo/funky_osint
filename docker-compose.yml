@@ -11,5 +11,8 @@ services:
     volumes:
       - ./tools:/tools
       - ./workspace:/workspace
+      - ./scripts:/scripts:ro
+      - ./repos.yml:/repos.yml:ro
     working_dir: /workspace
-    command: /bin/bash
+    entrypoint: ["/bin/bash", "/scripts/install-tools.sh"]
+    command: ["bash", "-l"]
