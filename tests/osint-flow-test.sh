@@ -8,6 +8,7 @@ mkdir -p "$tmp/bin" "$tmp/workspace"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/sleep"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/clear"
 printf '#!/usr/bin/env bash\necho scan failed\nexit 1\n' > "$tmp/bin/maigret"
+for tool in sherlock holehe phoneinfoga ignorant; do printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/$tool"; done
 chmod +x "$tmp/bin/"*
 export PATH="$tmp/bin:$PATH" WORKSPACE="$tmp/workspace"
 
@@ -22,7 +23,7 @@ grep -q 'maigret failed' "$tmp/scan-output"
 mkdir "$tmp/phone-workspace"
 export WORKSPACE="$tmp/phone-workspace"
 printf '+1234567890' > "$tmp/phones.txt"
-printf '4\n%s\n10\n1\n8\n5\n' "$tmp/phones.txt" | bash "$root/scripts/osint-flow.sh" > "$tmp/phone-output" 2>&1
+printf '4\n%s\n10\n1\n+1\n8\n5\n' "$tmp/phones.txt" | bash "$root/scripts/osint-flow.sh" > "$tmp/phone-output" 2>&1
 grep -qx '+1234567890' "$tmp/phone-workspace"/osint-*/target_phone.txt
 
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "$WORKSPACE/ignorant-args"\n' > "$tmp/bin/ignorant"
@@ -52,4 +53,18 @@ mkdir "$tmp/argument-workspace"
 export WORKSPACE="$tmp/argument-workspace"
 printf '9\n' | bash "$root/scripts/osint-flow.sh" direct_username > "$tmp/argument-output" 2>&1
 grep -qx 'direct_username' "$tmp/argument-workspace"/osint-*/target_username.txt
+
+mkdir "$tmp/intake-workspace"
+export WORKSPACE="$tmp/intake-workspace"
+printf '%s\n' '{"people":[{"name":"Alice","inputs":[{"type":"username","value":"alice"}]},{"name":"Bob","inputs":[{"type":"email","value":"bob@example.com"}]}],"relationships":[{"from":0,"to":1,"label":"partner"}]}' > "$tmp/intake.json"
+printf '9\n' | bash "$root/scripts/osint-flow.sh" --case "$tmp/intake.json" > "$tmp/intake-output" 2>&1
+python3 - "$WORKSPACE" <<'PY'
+import json, pathlib, sys
+case = next(pathlib.Path(sys.argv[1]).glob('osint-*/case.json'))
+data = json.loads(case.read_text())
+assert [p['name'] for p in data['people']] == ['Alice', 'Bob']
+assert {s['tool'] for s in data['scans']} == {'maigret', 'sherlock', 'holehe'}
+assert {s['status'] for s in data['scans']} == {'failed', 'completed'}
+assert data['person_relationships'][0]['source'] == 'user supplied'
+PY
 echo 'osint-flow checks passed'

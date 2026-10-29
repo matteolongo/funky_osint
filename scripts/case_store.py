@@ -57,6 +57,60 @@ def add_identifier(case, kind, value):
     save(case, data)
 
 
+def add_intake(case, intake):
+    if not isinstance(intake, dict) or not isinstance(intake.get('people'), list) or not intake['people']:
+        raise ValueError('people must be a non-empty list')
+    people = []
+    data = load(case)
+    for person in intake['people']:
+        if not isinstance(person, dict) or not isinstance(person.get('name'), str) or not person['name'].strip():
+            raise ValueError('each person needs a name')
+        inputs = person.get('inputs', [])
+        if not isinstance(inputs, list):
+            raise ValueError('inputs must be a list')
+        stored = {'id': uuid.uuid4().hex, 'name': person['name'].strip(), 'inputs': []}
+        for item in inputs:
+            if not isinstance(item, dict) or item.get('type') not in ('username', 'email', 'phone', 'profile'):
+                raise ValueError('unsupported input type')
+            value = item.get('value')
+            if not isinstance(value, str) or not value.strip() or '\n' in value or '\r' in value:
+                raise ValueError('input value must be a non-empty single line')
+            value = value.strip()
+            if item['type'] == 'username' and not re.fullmatch(r'[A-Za-z0-9_.-]+', value):
+                raise ValueError('username must not include @ or spaces')
+            if item['type'] == 'phone' and not re.fullmatch(r'\+[0-9]{7,15}', value):
+                raise ValueError('phone must include country code and digits only')
+            if item['type'] == 'email' and not EMAIL.fullmatch(value):
+                raise ValueError('invalid email')
+            if item['type'] == 'profile':
+                parsed = urlsplit(value)
+                if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+                    raise ValueError('profile must be an HTTP(S) URL')
+            entry = {'type': item['type'], 'value': value,
+                     'identifier_id': ensure_identifier(data, item['type'], value)}
+            for key in ('source', 'notes', 'country_code'):
+                if key in item:
+                    if not isinstance(item[key], str) or '\n' in item[key] or '\r' in item[key]:
+                        raise ValueError(f'{key} must be a single line')
+                    entry[key] = item[key]
+            if 'country_code' in entry and (item['type'] != 'phone' or not re.fullmatch(r'\+[0-9]{1,3}', entry['country_code']) or not value.startswith(entry['country_code']) or value == entry['country_code']):
+                raise ValueError('country_code must be a prefix of the phone number')
+            stored['inputs'].append(entry)
+        people.append(stored)
+    relationships = []
+    supplied_relationships = intake.get('relationships', [])
+    if not isinstance(supplied_relationships, list):
+        raise ValueError('relationships must be a list')
+    for rel in supplied_relationships:
+        if not isinstance(rel, dict) or type(rel.get('from')) is not int or type(rel.get('to')) is not int or not 0 <= rel['from'] < len(people) or not 0 <= rel['to'] < len(people) or not isinstance(rel.get('label'), str) or not rel['label'].strip():
+            raise ValueError('invalid person relationship')
+        relationships.append({'from': people[rel['from']]['id'], 'to': people[rel['to']]['id'],
+                              'label': rel['label'].strip(), 'source': 'user supplied'})
+    data['people'] = people
+    data['person_relationships'] = relationships
+    save(case, data)
+
+
 def add_scan(case, kind, value, tool, filename, status):
     if Path(filename).name != filename or not (case / filename).is_file():
         raise ValueError('Scan output must be a file in the case directory')

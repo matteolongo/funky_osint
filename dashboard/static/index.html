@@ -16,6 +16,7 @@
     <section id="empty" class="empty"><div class="empty-icon">◈</div><h2>No case selected</h2><p>Run an investigation to create a case, then select it here.</p><code>docker compose run --rm kali osint</code></section>
     <div id="content" hidden>
       <section id="stats" class="stats"></section>
+      <section id="case-intake" class="panel" hidden></section>
       <div class="tabs"><div role="tablist"><button class="tab active" data-view="graph" role="tab" aria-selected="true">Relationship map</button><button class="tab" data-view="list" role="tab" aria-selected="false">All findings</button></div><label class="recursive-toggle"><input id="recursive" type="checkbox"> Include recursive searches</label></div>
       <section id="graph-view" class="panel graph-panel"><div class="panel-head"><div><h2>Relationship map</h2><p>Follow a search from its starting point to the results it reports.</p></div><div class="legend"><span class="dot identifier"></span> Identifier <span class="dot scan"></span> Scan <span class="dot account"></span> Account</div></div><div id="graph" class="graph"></div><p class="footnote">Reported accounts are leads. Select a scan to inspect its output; scroll the map horizontally to see all columns.</p></section>
       <section id="list-view" class="panel" hidden><div class="panel-head"><div><h2>All findings</h2><p>Search identifiers, scans, and reported accounts.</p></div><input id="search" type="search" placeholder="Search findings" aria-label="Search findings"></div><div id="findings" class="findings"></div></section>
