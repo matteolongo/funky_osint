@@ -50,9 +50,48 @@ function render() {
   for (const [name, count] of [['Identifiers',c.identifiers.length],['Searches',c.scans.length],['Accounts',c.accounts.length],['Reported links',c.relationships.length]]) {
     const box = document.createElement('div'); box.className = 'stat'; box.append(text('small',name),text('strong',String(count))); stats.append(box);
   }
+  renderIntake(c);
   $('#graph-view').hidden = view !== 'graph'; $('#list-view').hidden = view !== 'list';
   document.querySelectorAll('.tab').forEach(b => { b.classList.toggle('active', b.dataset.view === view); b.setAttribute('aria-selected', String(b.dataset.view === view)); });
   renderGraph(c); renderList(c); renderDetail(c);
+}
+function renderIntake(c) {
+  const panel = $('#case-intake'); panel.replaceChildren(); panel.hidden = !c.people?.length;
+  if (panel.hidden) return;
+  panel.append(text('h2', 'People and supplied information'));
+  for (const person of c.people) {
+    const group = document.createElement('div'); group.className = 'observation';
+    group.append(text('h3', person.name));
+    for (const input of person.inputs) {
+      const description = `${input.type}: ${input.value}${input.source ? ` · Source: ${input.source}` : ''}${input.notes ? ` · ${input.notes}` : ''}`;
+      group.append(button(description, () => { selectedNode = input.identifier_id; renderGraph(c); renderDetail(c); }));
+    }
+    panel.append(group);
+  }
+  for (const relation of c.person_relationships || []) {
+    const from = c.people.find(p => p.id === relation.from), to = c.people.find(p => p.id === relation.to);
+    if (from && to) panel.append(text('p', `${from.name} · ${relation.label} · ${to.name} (user supplied)`));
+  }
+  const supplied = new Map();
+  for (const person of c.people) for (const input of person.inputs) {
+    const owners = supplied.get(input.identifier_id) || []; owners.push(person.name); supplied.set(input.identifier_id, owners);
+  }
+  const matches = c.relationships.filter(r => r.label === 'mentioned in output' && supplied.has(r.target));
+  if (matches.length) {
+    panel.append(text('h3', 'Supplied identifiers mentioned in search output'));
+    panel.append(text('p', 'Possible connections only; review the original evidence.'));
+    for (const match of matches) {
+      const scan = c.scans.find(s => s.id === match.source), identifier = c.identifiers.find(i => i.id === match.target);
+      if (!scan || !identifier || scan.target === identifier.id) continue;
+      const searched = c.identifiers.find(i => i.id === scan.target);
+      panel.append(button(`${identifier.value} (${supplied.get(match.target).join(', ')}) mentioned in ${scan.tool} search for ${searched?.value || 'unknown'} · view evidence`, () => { selectedNode = scan.id; renderGraph(c); renderDetail(c); }));
+    }
+  }
+  for (const person of c.people) for (const input of person.inputs.filter(i => i.type === 'profile')) {
+    for (const account of c.accounts.filter(a => a.url === input.value)) {
+      panel.append(button(`Supplied profile for ${person.name} matches a reported account · ${account.url} · view sources`, () => { selectedNode = account.id; renderGraph(c); renderDetail(c); }));
+    }
+  }
 }
 function edges(c) {
   return [...c.scans.map(s => ({source:s.target,target:s.id,label:'searched with',scan:s.id})),

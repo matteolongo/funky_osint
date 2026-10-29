@@ -17,6 +17,7 @@ RUN INSTALL_SKIP_APT=1 bash /scripts/install-tools.sh true && pip3 check
 
 COPY scripts/osint-flow.sh /scripts/osint-flow.sh
 COPY scripts/case_store.py /scripts/case_store.py
+COPY scripts/case_runner.py /scripts/case_runner.py
 COPY dashboard /dashboard
 RUN chmod +x /scripts/osint-flow.sh && ln -s /scripts/osint-flow.sh /usr/local/bin/osint
 
