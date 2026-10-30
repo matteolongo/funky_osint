@@ -6,18 +6,77 @@ import re
 import sys
 import tempfile
 import uuid
+import copy
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
-ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
-FOUND = re.compile(r'^\s*\[\+\]\s*([^:]+):\s*(https?://\S+)', re.I)
-EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
-USERNAME = re.compile(r'\busername["\s]*[:=]\s*["\']?([A-Za-z0-9_.-]+)', re.I)
-MENTION = re.compile(r'(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_.-]+)')
-SEARCH = re.compile(r'^\s*\[\*\]\s*Checking\s+(username|[A-Za-z0-9_]+_id)\s+(.+?)\s+on:\s*$', re.I)
-FIELD = re.compile(r'^\s*[├└]─([A-Za-z0-9_]+):\s*(.*)$')
-HOLEHE = re.compile(r'^\s*\[([+x!\-])\]\s+([A-Za-z0-9.-]+\.[A-Za-z]{2,})\s*$', re.I)
+from evidence import ANSI, EMAIL, ensure_identifier, parse_accounts
+
+
+@contextmanager
+def case_lock(case):
+    """OS locks release after a crash; never delete the lock file while in use."""
+    case.mkdir(parents=True, exist_ok=True)
+    with open(case / '.writer.lock', 'a+b') as file:
+        if os.fstat(file.fileno()).st_size == 0:
+            file.write(b'0')
+            file.flush()
+        file.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise ValueError('This case is already being modified by another runner') from error
+        try:
+            yield
+        finally:
+            file.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def validate_input(item):
+    if not isinstance(item, dict) or item.get('type') not in ('username', 'email', 'phone', 'profile'):
+        raise ValueError('unsupported input type')
+    value = item.get('value')
+    if not isinstance(value, str) or not value.strip() or '\n' in value or '\r' in value or '\x00' in value:
+        raise ValueError('input value must be a non-empty single line')
+    value = value.strip()
+    if value.startswith('-'):
+        raise ValueError('input must not start with a command option')
+    kind = item['type']
+    if kind == 'username' and not re.fullmatch(r'[A-Za-z0-9_.-]+', value):
+        raise ValueError('username must not include @ or spaces')
+    if kind == 'phone' and not re.fullmatch(r'\+[0-9]{7,15}', value):
+        raise ValueError('phone must include country code and digits only')
+    if kind == 'email' and not EMAIL.fullmatch(value):
+        raise ValueError('invalid email')
+    if kind == 'profile':
+        parsed = urlsplit(value)
+        if parsed.scheme not in ('http', 'https') or not parsed.hostname:
+            raise ValueError('profile must be an HTTP(S) URL')
+    result = {'type': kind, 'value': value}
+    for key in ('source', 'notes', 'country_code'):
+        if key in item:
+            if not isinstance(item[key], str) or any(c in item[key] for c in ('\n', '\r', '\x00')):
+                raise ValueError(f'{key} must be a single line')
+            result[key] = item[key]
+    code = result.get('country_code')
+    if code is not None and (kind != 'phone' or not re.fullmatch(r'\+[0-9]{1,3}', code) or not value.startswith(code) or value == code):
+        raise ValueError('country_code must be a prefix of the phone number')
+    return result
 
 
 def load(case):
@@ -40,20 +99,11 @@ def save(case, data):
             os.unlink(tmp)
 
 
-def ensure_identifier(data, kind, value):
-    for item in data['identifiers']:
-        if item['type'] == kind and item['value'] == value:
-            return item['id']
-    identifier = {'id': uuid.uuid4().hex, 'type': kind, 'value': value}
-    data['identifiers'].append(identifier)
-    return identifier['id']
-
-
 def add_identifier(case, kind, value):
-    if not value:
-        return
+    value = validate_input({'type': kind, 'value': value})['value']
     data = load(case)
-    ensure_identifier(data, kind, value)
+    identifier = ensure_identifier(data, kind, value)
+    next(i for i in data['identifiers'] if i['id'] == identifier)['supplied'] = True
     save(case, data)
 
 
@@ -70,31 +120,9 @@ def add_intake(case, intake):
             raise ValueError('inputs must be a list')
         stored = {'id': uuid.uuid4().hex, 'name': person['name'].strip(), 'inputs': []}
         for item in inputs:
-            if not isinstance(item, dict) or item.get('type') not in ('username', 'email', 'phone', 'profile'):
-                raise ValueError('unsupported input type')
-            value = item.get('value')
-            if not isinstance(value, str) or not value.strip() or '\n' in value or '\r' in value:
-                raise ValueError('input value must be a non-empty single line')
-            value = value.strip()
-            if item['type'] == 'username' and not re.fullmatch(r'[A-Za-z0-9_.-]+', value):
-                raise ValueError('username must not include @ or spaces')
-            if item['type'] == 'phone' and not re.fullmatch(r'\+[0-9]{7,15}', value):
-                raise ValueError('phone must include country code and digits only')
-            if item['type'] == 'email' and not EMAIL.fullmatch(value):
-                raise ValueError('invalid email')
-            if item['type'] == 'profile':
-                parsed = urlsplit(value)
-                if parsed.scheme not in ('http', 'https') or not parsed.hostname:
-                    raise ValueError('profile must be an HTTP(S) URL')
-            entry = {'type': item['type'], 'value': value,
-                     'identifier_id': ensure_identifier(data, item['type'], value)}
-            for key in ('source', 'notes', 'country_code'):
-                if key in item:
-                    if not isinstance(item[key], str) or '\n' in item[key] or '\r' in item[key]:
-                        raise ValueError(f'{key} must be a single line')
-                    entry[key] = item[key]
-            if 'country_code' in entry and (item['type'] != 'phone' or not re.fullmatch(r'\+[0-9]{1,3}', entry['country_code']) or not value.startswith(entry['country_code']) or value == entry['country_code']):
-                raise ValueError('country_code must be a prefix of the phone number')
+            entry = validate_input(item)
+            entry['identifier_id'] = ensure_identifier(data, entry['type'], entry['value'])
+            next(i for i in data['identifiers'] if i['id'] == entry['identifier_id'])['supplied'] = True
             stored['inputs'].append(entry)
         people.append(stored)
     relationships = []
@@ -120,107 +148,63 @@ def add_scan(case, kind, value, tool, filename, status):
             'output': filename, 'status': 'completed' if status == 0 else 'failed',
             'created_at': datetime.now(timezone.utc).isoformat()}
     data['scans'].append(scan)
+    save(case, data)
     if status == 0:
-        content = ANSI.sub('', (case / filename).read_text(encoding='utf-8', errors='replace'))
-        if tool in ('sherlock', 'maigret'):
-            parse_accounts(data, scan, kind, value, content)
-        else:
-            add_mentions(data, scan, content, handles=False)
-            if tool == 'holehe':
-                statuses = {'+': 'reported', '-': 'not reported', 'x': 'rate limited', '!': 'error'}
-                scan['checks'] = [{'site': match.group(2), 'status': statuses[match.group(1).lower()]}
-                                  for line in content.splitlines() if (match := HOLEHE.match(line))]
+        from adapters import TOOLS
+        parse_scan(case, scan['id'], TOOLS[tool])
+
+
+def parse_scan(case, scan_id, adapter):
+    original = load(case)
+    data = copy.deepcopy(original)
+    scan = next(s for s in data['scans'] if s['id'] == scan_id)
+    # Replace only this attempt's derived results; other attempts keep their evidence.
+    derived = {scan_id} | {s['id'] for s in data['scans'] if s.get('parent_scan') == scan_id}
+    old_identifiers = {r['target'] for r in data['relationships'] if r['source'] in derived}
+    old_identifiers.update(s['target'] for s in data['scans'] if s['id'] in derived and s['id'] != scan_id)
+    data['scans'] = [s for s in data['scans'] if s['id'] == scan_id or s['id'] not in derived]
+    data['relationships'] = [r for r in data['relationships'] if r['source'] not in derived]
+    for account in data['accounts']:
+        account['observations'] = [o for o in account.get('observations', []) if o['scan_id'] not in derived]
+    scan.pop('checks', None)
+    try:
+        filename = scan.get('structured_output', scan['output'])
+        path = (case / filename).resolve()
+        if Path(filename).name != filename or path.parent != case.resolve():
+            raise ValueError('invalid evidence path')
+        content = ANSI.sub('', path.read_text(encoding='utf-8', errors='replace'))
+        adapter.parse(data, scan, content)
+        data['accounts'] = [a for a in data['accounts'] if a.get('observations')]
+        retained = {s['target'] for s in data['scans']} | {r['target'] for r in data['relationships']}
+        retained.update(item['identifier_id'] for person in data.get('people', []) for item in person['inputs'])
+        data['identifiers'] = [i for i in data['identifiers']
+                               if i['id'] not in old_identifiers or i['id'] in retained or i.get('supplied')]
+        scan['parse_status'] = 'completed'
+        scan.pop('parse_error', None)
+    except Exception as error:
+        data = original
+        scan = next(s for s in data['scans'] if s['id'] == scan_id)
+        scan['parse_status'] = 'failed'
+        scan['parse_error'] = f'{type(error).__name__}: {error}'
+    scan['parser_version'] = adapter.parser_version
+    scan['parsed_at'] = now()
     save(case, data)
 
 
-def add_mentions(data, scan, content, handles=True):
-    for kind, values in (('email', EMAIL.findall(content)),
-                         ('username', USERNAME.findall(content) + (MENTION.findall(content) if handles else []))):
-        for value in sorted(set(values)):
-            identifier = ensure_identifier(data, kind, value)
-            if identifier != scan['target'] and not any(
-                    r['source'] == scan['id'] and r['target'] == identifier for r in data['relationships']):
-                data['relationships'].append({'source': scan['id'], 'target': identifier,
-                                              'label': 'mentioned in output', 'certainty': 'lead'})
-
-
-def parse_accounts(data, scan, original_kind, original_value, content):
-    contexts = {(original_kind, original_value): scan}
-    current_scan = scan
-    observation = None
-    block = []
-
-    def finish_block():
-        if block:
-            add_mentions(data, current_scan, '\n'.join(block))
-
-    for line in content.splitlines():
-        search = SEARCH.match(line)
-        if search:
-            finish_block()
-            block = []
-            observation = None
-            search_kind, search_value = search.groups()
-            search_kind = search_kind.lower()
-            key = (search_kind, search_value)
-            if key not in contexts:
-                contexts[key] = {'id': uuid.uuid4().hex,
-                                 'target': ensure_identifier(data, search_kind, search_value),
-                                 'tool': scan['tool'], 'output': scan['output'],
-                                 'status': scan['status'], 'created_at': scan['created_at'],
-                                 'scope': 'recursive', 'parent_scan': scan['id']}
-                data['scans'].append(contexts[key])
-            current_scan = contexts[key]
-            continue
-        match = FOUND.match(line)
-        if match:
-            finish_block()
-            block = []
-            observation = None
-            site, url = match.groups()
-            url = url.rstrip('.,;')
-            try:
-                parsed = urlsplit(url)
-                hostname = parsed.hostname or ''
-            except ValueError:
-                continue
-            search_value = next(i['value'] for i in data['identifiers'] if i['id'] == current_scan['target'])
-            is_profile_host = len(search_value) > 1 and search_value.lower() in hostname.lower().split('.')[:-2]
-            if (parsed.scheme not in ('http', 'https') or not parsed.netloc
-                    or (parsed.path in ('', '/') and not parsed.query and not parsed.fragment and not is_profile_host)):
-                continue
-            account = next((item for item in data['accounts'] if item['url'] == url), None)
-            if account is None:
-                account = {'id': uuid.uuid4().hex, 'site': site.strip(), 'url': url}
-                data['accounts'].append(account)
-            observations = account.setdefault('observations', [])
-            observation = next((item for item in observations if item['scan_id'] == current_scan['id']), None)
-            if observation is None:
-                observation = {'scan_id': current_scan['id'], 'fields': {}}
-                observations.append(observation)
-                data['relationships'].append({'source': current_scan['id'], 'target': account['id'],
-                                              'label': 'reported account', 'certainty': 'lead'})
-            continue
-        if re.match(r'^\s*\[(?:-|!|\*)\]', line):
-            finish_block()
-            block = []
-            observation = None
-            continue
-        if observation is not None:
-            field = FIELD.match(line)
-            if field:
-                observation['fields'][field.group(1)] = field.group(2).strip()
-            # Do not treat profile URLs or image URLs as username mentions.
-            block.append(re.sub(r'https?://\S+', '', line))
-    finish_block()
+def export_pivots(case):
+    data = load(case)
+    for kind in ('username', 'email'):
+        values = sorted({i['value'] for i in data['identifiers'] if i['type'] == kind})
+        (case / f'pivot_{kind}s.txt').write_text(''.join(v + '\n' for v in values), encoding='utf-8')
 
 
 if __name__ == '__main__':
     action, directory, *args = sys.argv[1:]
     case = Path(directory)
-    if action == 'identifier':
-        add_identifier(case, *args)
-    elif action == 'scan':
-        add_scan(case, *args[:-1], int(args[-1]))
-    else:
-        raise SystemExit('Unknown case action')
+    with case_lock(case):
+        if action == 'identifier':
+            add_identifier(case, *args)
+        elif action == 'scan':
+            add_scan(case, *args[:-1], int(args[-1]))
+        else:
+            raise SystemExit('Unknown case action')

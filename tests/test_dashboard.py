@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import tempfile
+import sys
 import threading
 import unittest
 import urllib.error
@@ -8,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 
 
 def module(name, path):
@@ -62,6 +64,16 @@ class DashboardTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(base + '/api/cases/osint-example/evidence/private.txt')
         self.assertEqual(error.exception.code, 404)
+
+        report = self.case / 'scan.json'
+        report.write_text('{"source":"structured"}', encoding='utf-8')
+        data = self.store.load(self.case)
+        data['scans'][0].update(structured_output=report.name, parse_status='failed', parse_error='Unsupported schema')
+        self.store.save(self.case, data)
+        with urllib.request.urlopen(base + '/api/cases/osint-example/evidence/scan.json') as response:
+            self.assertEqual(json.load(response), {'source': 'structured'})
+        with urllib.request.urlopen(base + '/api/cases') as response:
+            self.assertEqual(json.load(response)[0]['scans'][0]['parse_error'], 'Unsupported schema')
 
     def test_maigret_preserves_recursive_search_and_account_details(self):
         output = self.case / 'maigret.txt'

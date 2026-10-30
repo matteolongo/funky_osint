@@ -48,7 +48,8 @@ def make_server(workspace, host='0.0.0.0', port=8080):
                     if case.parent != workspace:
                         raise ValueError('invalid case')
                     data = json.loads((case / 'case.json').read_text(encoding='utf-8'))
-                    if filename not in {s['output'] for s in data['scans']}:
+                    allowed = {s[key] for s in data['scans'] for key in ('output', 'structured_output') if s.get(key)}
+                    if filename not in allowed:
                         raise ValueError('unlisted evidence')
                     evidence = (case / filename).resolve()
                     if evidence.parent != case:

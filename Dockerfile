@@ -1,7 +1,6 @@
 FROM kalilinux/kali-rolling:latest
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PIP_BREAK_SYSTEM_PACKAGES=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git python3 python3-yaml \
@@ -13,11 +12,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/install-tools.sh /scripts/install-tools.sh
-RUN INSTALL_SKIP_APT=1 bash /scripts/install-tools.sh true && pip3 check
+COPY scripts/install_tools.py /scripts/install_tools.py
+RUN INSTALL_SKIP_APT=1 bash /scripts/install-tools.sh true
 
 COPY scripts/osint-flow.sh /scripts/osint-flow.sh
 COPY scripts/case_store.py /scripts/case_store.py
 COPY scripts/case_runner.py /scripts/case_runner.py
+COPY scripts/osint_cli.py scripts/evidence.py /scripts/
+COPY scripts/adapters /scripts/adapters
 COPY dashboard /dashboard
 RUN chmod +x /scripts/osint-flow.sh && ln -s /scripts/osint-flow.sh /usr/local/bin/osint
 
