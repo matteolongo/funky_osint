@@ -7,7 +7,11 @@ docker run --rm --entrypoint bash "$image" -c '
     for tool in phoneinfoga sherlock maigret holehe ignorant; do
         "$tool" --help >/dev/null 2>&1
     done
-    pip3 check
+    for tool in sherlock maigret holehe ignorant; do
+        /opt/tools/$tool/bin/python -m pip check
+        test "$(readlink /usr/local/bin/$tool)" = "/opt/tools/$tool/bin/$tool"
+    done
+    python3 -c "import json; d=json.load(open(\"/tools/versions.json\")); assert len(d)==5; assert all(len(t[\"revision\"])==40 for t in d.values())"
     export TERM=xterm WORKSPACE=/tmp/osint-test
     printf "alice\nalice@example.com\n" > /tmp/pivots
     printf "4\n/tmp/pivots\n9\n" | osint >/dev/null
@@ -25,11 +29,12 @@ docker run --rm --entrypoint bash "$image" -c '
     set -eu
     git init -q -b master /tmp/source
     git -C /tmp/source -c user.name=test -c user.email=test@example.com commit -q --allow-empty -m fixture
+    revision=$(git -C /tmp/source rev-parse HEAD)
     cat > /repos.yml <<EOF
 tools:
   - name: failing-tool
     repo: /tmp/source
-    ref: master
+    ref: $revision
     dest: /tmp/checkout
     enabled: true
     check_bin: failing-tool
