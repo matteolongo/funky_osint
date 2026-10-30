@@ -16,7 +16,7 @@
 - [x] Update dashboard scan details and progress for running, failed, interrupted, timeout and parse failure states. Keep GET-only API and evidence allowlisting. Add focused dashboard checks.
 - [x] Pin tool commits, install Python tools into individual virtual environments, record installed revisions and dependency versions in an image manifest, and validate each environment. Update Dockerfile, image smoke checks, README and AGENTS guidance. Build a separate PR image tag without recreating running services.
 - [x] Run only affected local checks, shell/Python/JS syntax checks and the production image build/smoke check. Add Linux CI for full checks. Review fixes cover process-group cleanup, unfinished parsing recovery, legacy writer locking, path validation, and atomic report publication.
-- [ ] Commit, push and open a PR against `codex/multi-input-cases` (PR #1).
+- [x] Commit, push and open [PR #2](https://github.com/matteolongo/funky_osint/pull/2) against `codex/multi-input-cases` (PR #1).
 
 ## Acceptance checks
 

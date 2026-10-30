@@ -108,5 +108,3 @@ def parse_accounts(data, scan, original_kind, original_value, content):
             # Do not treat profile URLs or image URLs as username mentions.
             block.append(re.sub(r'https?://\S+', '', line))
     finish_block()
-
-
