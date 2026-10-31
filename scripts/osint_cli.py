@@ -11,6 +11,7 @@ from pathlib import Path
 
 import case_runner as runner
 import case_store as store
+import llm_review
 
 
 def create_case():
@@ -138,15 +139,25 @@ def main(argv=None):
     parser.add_argument('--rerun', action='store_true', help='with --resume, also create new attempts for completed searches')
     parser.add_argument('--batch', action='store_true', help='exit after execution without opening menus')
     parser.add_argument('--timeout', type=float, help=f'whole-process deadline in seconds (new searches: {runner.DEFAULT_TIMEOUT})')
+    parser.add_argument('--review', action='store_true', help='require OpenAI review after each tool; saved for this case')
+    parser.add_argument('--approve-review', metavar='SCAN_ID', help='with --resume, manually approve a paused review')
+    parser.add_argument('--review-note', help='reason for manually approving the paused review')
     args = parser.parse_args(argv)
     if args.username and (args.case or args.resume or args.reparse):
         parser.error('username cannot be combined with --case, --resume or --reparse')
     if args.rerun and not args.resume:
         parser.error('--rerun requires --resume')
+    if args.approve_review and (not args.resume or not args.review_note):
+        parser.error('--approve-review requires --resume and --review-note')
+    if args.review_note and not args.approve_review:
+        parser.error('--review-note requires --approve-review')
+    if args.review and args.reparse:
+        parser.error('--reparse is offline; use --resume --review to review parsed evidence')
     if args.batch and not (args.username or args.case or args.resume or args.reparse):
         parser.error('--batch requires a username, --case, --resume or --reparse')
     case = None
     try:
+        policy = llm_review.policy_from_env() if args.review else None
         timeout = runner.validate_timeout(args.timeout if args.timeout is not None else runner.DEFAULT_TIMEOUT)
         if args.username:
             store.validate_input({'type': 'username', 'value': args.username})
@@ -156,11 +167,18 @@ def main(argv=None):
             return 0
         if args.resume:
             case = args.resume.resolve()
-            runner.resume_case(case, rerun=args.rerun, timeout=args.timeout)
+            if args.approve_review:
+                llm_review.approve_review(case, args.approve_review, args.review_note)
+            runner.resume_case(case, rerun=args.rerun, timeout=args.timeout, review=policy)
         else:
             intake = json.loads(args.case.read_text(encoding='utf-8-sig')) if args.case else None
             case = create_case()
             print(f'Case: {case}', flush=True)
+            if policy:
+                with store.case_lock(case):
+                    data = store.load(case)
+                    llm_review.configure(data, policy)
+                    store.save(case, data)
             if intake is not None:
                 runner.run_case(case, intake, timeout)
             elif args.username:
@@ -176,6 +194,9 @@ def main(argv=None):
     except KeyboardInterrupt:
         print(f'Interrupted. Resume with: osint --resume {case}', file=sys.stderr)
         return 130
+    except llm_review.ReviewBlocked as error:
+        print(f'{error}\nResults saved. Resume with: osint --resume {case}', file=sys.stderr)
+        return 3
     except (OSError, ValueError) as error:
         print(f'Cannot run case: {error}', file=sys.stderr)
         return 1
