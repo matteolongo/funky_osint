@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 
 import case_store as store
+import llm_review
 from adapters import TOOLS
 
 DEFAULT_TIMEOUT = 300
@@ -156,6 +157,7 @@ def stop_process(process):
 
 def execute_pending(case):
     data = store.load(case)
+    llm_review.configure(data)
     pending = []
     for scan in data['scans']:
         if scan['status'] != 'pending':
@@ -181,6 +183,7 @@ def execute_pending(case):
         validate_timeout(scan['timeout'])
         pending.append(scan['id'])
     store.save(case, data)
+    llm_review.review_completed(case)
     for scan_id in pending:
         data = store.load(case)
         scan = next(s for s in data['scans'] if s['id'] == scan_id)
@@ -202,7 +205,8 @@ def execute_pending(case):
                 else:
                     process = subprocess.Popen(scan['command'], cwd=artifact_dir, stdin=subprocess.DEVNULL,
                                                stdout=output, stderr=subprocess.STDOUT,
-                                               env={**os.environ, 'OSINT_CASE_DIR': str(case)},
+                                               env={**{k: v for k, v in os.environ.items() if k != 'OPENAI_API_KEY'},
+                                                    'OSINT_CASE_DIR': str(case)},
                                                start_new_session=os.name == 'posix')
                     scan['process_identity'] = process_identity(process.pid)
                     store.save(case, data)
@@ -230,14 +234,16 @@ def execute_pending(case):
         print(f"{scan['tool']} {scan['status']}: {scan['output']}", flush=True)
         if interrupted is not None:
             raise interrupted
+        llm_review.review_scan(case, scan_id)
 
 
-def run_targets(case, inputs, timeout=DEFAULT_TIMEOUT, rerun=False):
+def run_targets(case, inputs, timeout=DEFAULT_TIMEOUT, rerun=False, review=None):
     inputs = [store.validate_input(item) for item in inputs]
     timeout = validate_timeout(timeout)
     case = Path(case).resolve()
     with store.case_lock(case):
         data = store.load(case)
+        llm_review.configure(data, review)
         plan(data, inputs, timeout, rerun)
         store.save(case, data)
         finish_pending_parsing(case)
@@ -245,12 +251,15 @@ def run_targets(case, inputs, timeout=DEFAULT_TIMEOUT, rerun=False):
         store.export_pivots(case)
 
 
-def run_case(case, intake, timeout=DEFAULT_TIMEOUT):
+def run_case(case, intake, timeout=DEFAULT_TIMEOUT, review=None):
     timeout = validate_timeout(timeout)
     case = Path(case).resolve()
     with store.case_lock(case):
+        existing = store.load(case)
+        llm_review.configure(existing, review)
         store.add_intake(case, intake)
         data = store.load(case)
+        llm_review.configure(data, review)
         plan(data, [item for person in data['people'] for item in person['inputs']], timeout)
         store.save(case, data)
         finish_pending_parsing(case)
@@ -258,7 +267,7 @@ def run_case(case, intake, timeout=DEFAULT_TIMEOUT):
         store.export_pivots(case)
 
 
-def resume_case(case, rerun=False, timeout=None):
+def resume_case(case, rerun=False, timeout=None, review=None):
     case = Path(case).resolve()
     if not (case / 'case.json').is_file():
         raise ValueError('No case.json in the requested case directory')
@@ -266,6 +275,7 @@ def resume_case(case, rerun=False, timeout=None):
         validate_timeout(timeout)
     with store.case_lock(case):
         data = store.load(case)
+        llm_review.configure(data, review)
         recover(data)
         latest = {}
         for scan in data['scans']:
@@ -299,4 +309,5 @@ def reparse_case(case):
         for scan in store.load(case)['scans']:
             if scan['status'] not in ('pending', 'running') and not scan.get('parent_scan') and scan['tool'] in TOOLS:
                 finish_parsing(case, scan['id'])
+        llm_review.invalidate_changed_reviews(case)
         store.export_pivots(case)

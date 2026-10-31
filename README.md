@@ -121,6 +121,47 @@ docker compose run --rm kali osint --reparse /workspace/osint-YYYYMMDD_HHMMSS-ex
 
 Parsing and execution have separate statuses. A parsing error leaves the original evidence and previously extracted results intact. Reparse replaces that attempt's observations instead of duplicating them. Only one writer can modify a case at a time; the dashboard continues reading atomic JSON snapshots. Ctrl+C and container termination stop the active process group and save the interruption; a stale running scan is marked interrupted when the case is resumed.
 
+### Require OpenAI review between scans
+
+Create a local `.env` in the repository root using `.env.example` as a guide:
+
+```dotenv
+OPENAI_API_KEY=your-api-key
+OPENAI_MODEL=gpt-5-mini
+OPENAI_REVIEW_TIMEOUT=90
+```
+
+The key is passed only to the runner service. It is not included in the image, case JSON, dashboard environment, or child OSINT tools. `.env` files are ignored by Git and the image build. A host environment variable also works; Compose environment variables take precedence over `.env`.
+
+Build the updated application and start a review-enabled case:
+
+```bash
+docker compose build kali
+docker compose up -d dashboard
+docker compose run --rm kali osint example_username --review --batch
+# Or use the existing interactive menu / multi-person intake:
+docker compose run --rm kali osint --review
+docker compose run --rm kali osint --case /workspace/intake.json --review --batch
+```
+
+After every tool, the runner saves output, extracts findings, and requests an OpenAI assessment before starting the next tool. Reviews contain an Italian summary, evidence-linked concerns, and suggested checks. The model can continue the existing plan or pause it; it cannot execute commands, add searches, change evidence, or verify identity. The dashboard displays the assessment separately from original findings.
+
+Enabling review sends supplied case context, this scan's identifiers and profile fields, a short list of preceding scans, and bounded raw-output excerpts to OpenAI. Lists are limited to 30 entries, individual context strings to 800 characters, raw excerpts to 12 KB per file, and total context to 64 KB; large profile lists are reduced further to fit. Coverage is shown in the dashboard. No profile images are uploaded: only their reported URLs may appear as text. The request uses [Responses API structured output](https://developers.openai.com/api/docs/guides/structured-outputs) with `store: false`; that setting does not itself guarantee zero retention under all API data policies. API usage is billed to the configured account.
+
+The review policy/model is saved in the case. `--resume` retains it even when `--review` is omitted. Completed reviews of unchanged evidence are reused. Timeouts, unavailable credentials, refusals, malformed responses, and API errors block the next scan; an API error is retried on resume. A paused/failed review exits the CLI with code 3; a configuration error exits with code 1.
+
+```bash
+docker compose run --rm kali osint --resume /workspace/CASE_FOLDER --batch
+```
+
+For a completed review whose decision is **pause**, inspect its sources in the dashboard. You can explicitly approve that pause and record your reason (replace the scan ID printed by the CLI):
+
+```bash
+docker compose run --rm kali osint --resume /workspace/CASE_FOLDER --approve-review SCAN_ID --review-note "Sources checked manually" --batch
+```
+
+API errors and missing reviews cannot be approved this way. Changed evidence invalidates an old assessment/approval; resume obtains a new review first. `--reparse` remains offline and marks changed assessments stale. Cases started without `--review` continue to work without an API key; enable review on an existing case using `--resume ... --review`, which reviews previous terminal scans before continuing. There is no silent fallback that bypasses a saved review policy.
+
 ### Start with a multi-person case
 
 Put a JSON file in the host `workspace/` directory, for example `workspace/intake.json`:

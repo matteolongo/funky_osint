@@ -7,6 +7,10 @@ services:
     tty: true
     stdin_open: true
     init: true
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      OPENAI_REVIEW_TIMEOUT: ${OPENAI_REVIEW_TIMEOUT:-90}
     volumes:
       - ./workspace:/workspace
     working_dir: /workspace
