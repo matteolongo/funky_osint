@@ -13,6 +13,7 @@ from pathlib import Path
 
 import case_store as store
 import llm_review
+import analysis
 from adapters import TOOLS
 
 DEFAULT_TIMEOUT = 300
@@ -183,7 +184,9 @@ def execute_pending(case):
         validate_timeout(scan['timeout'])
         pending.append(scan['id'])
     store.save(case, data)
+    analysis.invalidate_clusters(case)
     llm_review.review_completed(case)
+    analysis.review_clusters(case)
     for scan_id in pending:
         data = store.load(case)
         scan = next(s for s in data['scans'] if s['id'] == scan_id)
@@ -235,6 +238,7 @@ def execute_pending(case):
         if interrupted is not None:
             raise interrupted
         llm_review.review_scan(case, scan_id)
+        analysis.review_clusters(case)
 
 
 def run_targets(case, inputs, timeout=DEFAULT_TIMEOUT, rerun=False, review=None):
@@ -310,4 +314,5 @@ def reparse_case(case):
             if scan['status'] not in ('pending', 'running') and not scan.get('parent_scan') and scan['tool'] in TOOLS:
                 finish_parsing(case, scan['id'])
         llm_review.invalidate_changed_reviews(case)
+        analysis.invalidate_clusters(case)
         store.export_pivots(case)

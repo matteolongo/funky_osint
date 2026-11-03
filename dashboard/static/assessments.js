@@ -15,4 +15,8 @@ function itemAssessment(c, item, index) {
   for (const label of ['relevant', 'unreviewed', 'uncertain', 'likely_noise']) if (labels.includes(label)) return label;
   return 'unreviewed';
 }
-if (typeof module !== 'undefined') module.exports = {triageIndex, itemAssessment};
+function currentGroups(c) {
+  const review = c.cluster_reviews?.at(-1);
+  return review?.status === 'completed' ? review.result?.groups || [] : [];
+}
+if (typeof module !== 'undefined') module.exports = {triageIndex, itemAssessment, currentGroups};

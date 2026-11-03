@@ -169,6 +169,12 @@ docker compose run --rm kali osint --resume /workspace/CASE_FOLDER --approve-rev
 
 API errors and missing reviews cannot be approved this way. Changed evidence invalidates an old assessment/approval; resume obtains a new review first. `--reparse` remains offline and marks changed assessments stale. Cases started without `--review` continue to work without an API key; enable review on an existing case using `--resume ... --review`, which reviews previous terminal scans before continuing. There is no silent fallback that bypasses a saved review policy.
 
+### Candidate groups
+
+Review-enabled cases also compare candidate profiles after each scan, before the next tool starts. Exact reported links, shared email addresses and selected matching profile fields identify pairs to compare. Shared usernames alone do not generate candidates. The model proposes **possible connections**, with supporting and conflicting evidence; it never establishes ownership or merges person records. A repeated observation of one source does not count as independent confirmation.
+
+The dashboard shows expandable candidate groups and dashed possible-link edges. Pairwise groups may overlap; they are not merged transitively. Ambiguous or unexamined accounts remain unassigned. Context coverage is disclosed: fields and source records can be shortened, so a suggested link remains a hypothesis. At most 2,000 candidate pairs are selected deterministically; if there are more, the dashboard explicitly marks comparison coverage as limited. Omitted comparisons stay unknown. Each clustering invocation has the same request cap as triage (a separate allowance of `OPENAI_REVIEW_MAX_REQUESTS`, default 8). Resume continues saved comparisons, while changed evidence immediately makes previous groups stale. Every selected comparison must complete before the next tool starts. Model suggestions never schedule searches. Original observations and all-leads exports stay unchanged.
+
 ### Start with a multi-person case
 
 Put a JSON file in the host `workspace/` directory, for example `workspace/intake.json`:

@@ -51,6 +51,7 @@ function render() {
     const box = document.createElement('div'); box.className = 'stat'; box.append(text('small',name),text('strong',String(count))); stats.append(box);
   }
   renderIntake(c);
+  renderClusters(c);
   const index = triageIndex(c), findings = items(c).filter(i => i.kind !== 'scan');
   const filter = $('#triage-filter').value;
   const shown = findings.filter(i => filter === 'all' || itemAssessment(c, i, index) === filter).length;
@@ -112,7 +113,40 @@ function renderIntake(c) {
 function edges(c) {
   return [...c.scans.map(s => ({source:s.target,target:s.id,label:'searched with',scan:s.id})),
     ...c.scans.filter(s => s.parent_scan).map(s => ({source:s.parent_scan,target:s.id,label:'recursive search',scan:s.id})),
-    ...c.relationships.map(r => ({...r,scan:r.source}))];
+    ...c.relationships.map(r => ({...r,scan:r.source})),
+    ...currentGroups(c).map(g => ({source:g.member_ids[0],target:g.member_ids[1],label:'Possible connection · model hypothesis',hypothesis:true}))];
+}
+function renderClusters(c) {
+  const panel = $('#candidate-groups'), review = c.cluster_reviews?.at(-1);
+  panel.replaceChildren(); panel.hidden = !review;
+  if(!review) return;
+  panel.append(text('h2','Candidate groups'),text('p','Model hypotheses, not verified identities. Overlapping pairs are not merged into a person.'));
+  panel.append(text('p',`Assessment: ${review.status}${review.coverage ? ` · ${review.coverage.reviewed} of ${review.coverage.total} comparisons reviewed` : ''}`));
+  if(review.error) panel.append(text('p',review.error));
+  if(review.coverage?.selection_limited) panel.append(text('p','Comparison limit reached. Only the selected pairs were assessed; additional possible comparisons remain unreviewed.'));
+  const groups = currentGroups(c);
+  for(const [index, group] of groups.entries()) {
+    const detail = document.createElement('details'); detail.className = 'observation';
+    detail.append(text('summary',`Possible connection ${index+1} · ${group.member_ids.map(id=>c.accounts.find(a=>a.id===id)?.site || id).join(' ↔ ')}`));
+    detail.append(text('p',group.rationale));
+    for(const id of group.member_ids) if(c.accounts.some(a=>a.id===id)) detail.append(button('Explore member',()=>citeEvidence(c,id)));
+    for(const [key,title] of [['supporting_evidence_ids','Supporting evidence'],['contradicting_evidence_ids','Conflicting evidence']]) {
+      detail.append(text('h4',title));
+      if(!group[key].length) detail.append(text('p','None cited; absence of contradictions is not verification.'));
+      for(const id of group[key]) detail.append(button('View source',()=>citeEvidence(c,id)));
+    }
+    panel.append(detail);
+  }
+  if(review.status === 'completed') {
+    const unassigned = document.createElement('details'); unassigned.className = 'observation';
+    unassigned.append(text('summary',`Unassigned accounts (${review.result.unassigned_ids.length})`),text('p','No suggested connection in the reviewed comparisons. Some accounts or comparisons may not have been assessed.'));
+    for(const id of review.result.unassigned_ids) {
+      const account = c.accounts.find(a=>a.id===id);
+      if(account) unassigned.append(button(`${account.site} · ${account.url}`,()=>citeEvidence(c,id)));
+    }
+    panel.append(unassigned);
+  } else panel.append(text('p','Candidate groups are withheld until this assessment completes. Earlier groups remain in case history.'));
+  panel.append(text('p','Comparison context is bounded: up to 40 source records per pair, shortened profile fields. See raw sources before drawing conclusions.','meta'));
 }
 function filteredItems(c) {
   const filter = $('#triage-filter').value, index = triageIndex(c);
@@ -134,7 +168,7 @@ function renderGraph(c) {
   for (const edge of edges(c)) {
     const a=positions.get(edge.source), b=positions.get(edge.target); if (!a || !b) continue;
     if (a.x === b.x) {
-      const path=document.createElementNS(svgNS,'path');path.setAttribute('d',`M ${a.x+240} ${a.y+24} C ${a.x+275} ${a.y+24}, ${b.x+275} ${b.y+24}, ${b.x+240} ${b.y+24}`);path.setAttribute('fill','none');path.setAttribute('stroke','#c7d3e2');path.setAttribute('stroke-width','1.5');svg.append(path);
+      const path=document.createElementNS(svgNS,'path');path.setAttribute('d',`M ${a.x+240} ${a.y+24} C ${a.x+275} ${a.y+24}, ${b.x+275} ${b.y+24}, ${b.x+240} ${b.y+24}`);path.setAttribute('fill','none');path.setAttribute('stroke',edge.hypothesis?'#9b6f16':'#c7d3e2');path.setAttribute('stroke-width','1.5');if(edge.hypothesis){path.setAttribute('stroke-dasharray','5 5');const title=document.createElementNS(svgNS,'title');title.textContent=edge.label;path.append(title);}svg.append(path);
     } else {
       const line=document.createElementNS(svgNS,'line'); line.setAttribute('x1',a.x+(a.x<b.x?240:0));line.setAttribute('y1',a.y+24);line.setAttribute('x2',b.x+(a.x<b.x?0:240));line.setAttribute('y2',b.y+24); svg.append(line);
     }
