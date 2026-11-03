@@ -17,6 +17,8 @@ jobs:
       - run: bash tests/osint-flow-test.sh
       - run: bash -n scripts/*.sh tests/*.sh
       - run: node --check dashboard/static/app.js
+      - run: node --check dashboard/static/assessments.js
+      - run: node --test tests/test_assessments.js
       - run: docker compose config --quiet
   image:
     runs-on: ubuntu-latest

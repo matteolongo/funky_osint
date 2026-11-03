@@ -24,9 +24,9 @@ def make_server(workspace, host='0.0.0.0', port=8080):
         def do_GET(self):
             parts = [unquote(p) for p in urlsplit(self.path).path.split('/') if p]
             try:
-                if parts in ([], ['app.js'], ['style.css']):
+                if parts in ([], ['app.js'], ['assessments.js'], ['style.css']):
                     name = parts[0] if parts else 'index.html'
-                    kind = {'index.html': 'text/html', 'app.js': 'text/javascript', 'style.css': 'text/css'}[name]
+                    kind = {'index.html': 'text/html', 'app.js': 'text/javascript', 'assessments.js': 'text/javascript', 'style.css': 'text/css'}[name]
                     return self.send_data((STATIC / name).read_bytes(), kind + '; charset=utf-8')
                 if parts == ['api', 'cases']:
                     cases = []

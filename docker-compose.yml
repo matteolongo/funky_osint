@@ -11,6 +11,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
       OPENAI_REVIEW_TIMEOUT: ${OPENAI_REVIEW_TIMEOUT:-90}
+      OPENAI_REVIEW_MAX_REQUESTS: ${OPENAI_REVIEW_MAX_REQUESTS:-8}
     volumes:
       - ./workspace:/workspace
     working_dir: /workspace
