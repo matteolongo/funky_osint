@@ -121,6 +121,8 @@ docker compose run --rm kali osint --reparse /workspace/osint-YYYYMMDD_HHMMSS-ex
 
 Parsing and execution have separate statuses. A parsing error leaves the original evidence and previously extracted results intact. Reparse replaces that attempt's observations instead of duplicating them. Only one writer can modify a case at a time; the dashboard continues reading atomic JSON snapshots. Ctrl+C and container termination stop the active process group and save the interruption; a stale running scan is marked interrupted when the case is resumed.
 
+Evidence cards in the dashboard detail panel show the collecting tool, collection time, and saved file with its line number or JSON field path. A mention from a profile field links to the account that reported it. Each reference retains the original value and the saved artifact's SHA-256 hash. Profile comparisons fold only the URL hostname, and email comparison keys fold only the domain. Repeated reports remain traceable to their individual scans.
+
 ### Require OpenAI review between scans
 
 Create a local `.env` in the repository root using `.env.example` as a guide:

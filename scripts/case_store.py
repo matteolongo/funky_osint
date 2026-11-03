@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Persist case data and retain the evidence behind reported accounts."""
 import json
+import hashlib
 import os
 import re
 import sys
@@ -164,6 +165,7 @@ def parse_scan(case, scan_id, adapter):
     old_identifiers.update(s['target'] for s in data['scans'] if s['id'] in derived and s['id'] != scan_id)
     data['scans'] = [s for s in data['scans'] if s['id'] == scan_id or s['id'] not in derived]
     data['relationships'] = [r for r in data['relationships'] if r['source'] not in derived]
+    data['evidence'] = [item for item in data.get('evidence', []) if item['attempt_id'] != scan_id]
     for account in data['accounts']:
         account['observations'] = [o for o in account.get('observations', []) if o['scan_id'] not in derived]
     scan.pop('checks', None)
@@ -172,7 +174,9 @@ def parse_scan(case, scan_id, adapter):
         path = (case / filename).resolve()
         if Path(filename).name != filename or path.parent != case.resolve():
             raise ValueError('invalid evidence path')
-        content = ANSI.sub('', path.read_text(encoding='utf-8', errors='replace'))
+        raw = path.read_bytes()
+        scan['artifact'] = {'filename': filename, 'artifact_sha256': hashlib.sha256(raw).hexdigest()}
+        content = ANSI.sub('', raw.decode('utf-8', errors='replace')).replace('\r\n', '\n').replace('\r', '\n')
         adapter.parse(data, scan, content)
         data['accounts'] = [a for a in data['accounts'] if a.get('observations')]
         retained = {s['target'] for s in data['scans']} | {r['target'] for r in data['relationships']}

@@ -1,4 +1,4 @@
-from evidence import add_mentions
+from evidence import parse_output_mentions
 
 NAME, KIND = 'ignorant', 'phone'
 
@@ -9,4 +9,4 @@ def arguments(item):
 
 
 def parse(data, scan, content):
-    add_mentions(data, scan, content, handles=False)
+    parse_output_mentions(data, scan, content, handles=False)
