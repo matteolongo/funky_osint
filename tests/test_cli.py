@@ -63,6 +63,23 @@ class CliTests(unittest.TestCase):
         self.assertIn('OPENAI_API_KEY', result.stderr)
         self.assertEqual(list(self.workspace.glob('osint-*')), [])
 
+    def test_report_exports_saved_case_offline_without_new_attempts(self):
+        from unittest.mock import patch
+        self.assertEqual(self.cli('alice', '--batch').returncode, 0)
+        case = next(self.workspace.glob('osint-*/case.json'))
+        original = case.read_bytes()
+        with patch.dict(os.environ, {'OPENAI_API_KEY': ''}):
+            result = self.cli('--report', str(case.parent))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(case.read_bytes(), original)
+        self.assertEqual(len(list(case.parent.glob('report-*.html'))), 1)
+        self.assertIn('Report saved', result.stdout)
+
+    def test_report_rejects_review_and_missing_case(self):
+        self.assertNotEqual(self.cli('--report', str(self.workspace / 'missing'), '--review').returncode, 0)
+        self.assertNotEqual(self.cli('--report', str(self.workspace / 'missing')).returncode, 0)
+        self.assertFalse((self.workspace / 'missing').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

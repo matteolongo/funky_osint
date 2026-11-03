@@ -175,6 +175,14 @@ Review-enabled cases also compare candidate profiles after each scan, before the
 
 The dashboard shows expandable candidate groups and dashed possible-link edges. Pairwise groups may overlap; they are not merged transitively. Ambiguous or unexamined accounts remain unassigned. Context coverage is disclosed: fields and source records can be shortened, so a suggested link remains a hypothesis. At most 2,000 candidate pairs are selected deterministically; if there are more, the dashboard explicitly marks comparison coverage as limited. Omitted comparisons stay unknown. Each clustering invocation has the same request cap as triage (a separate allowance of `OPENAI_REVIEW_MAX_REQUESTS`, default 8). Resume continues saved comparisons, while changed evidence immediately makes previous groups stale. Every selected comparison must complete before the next tool starts. Model suggestions never schedule searches. Original observations and all-leads exports stay unchanged.
 
+### Export an offline investigation brief
+
+```bash
+docker compose run --rm kali osint --report /workspace/CASE_FOLDER
+```
+
+This creates a timestamped `report-*.html` inside the case directory, without running tools or calling OpenAI. Open the file from the host `workspace/CASE_FOLDER` and print it from your browser if needed. It includes supplied inputs, tool coverage, original observations, model relevance labels, candidate groups, conflicting evidence, manual checks, and a SHA-256 snapshot manifest. Stale and partial assessments are labelled, and source citations link to saved evidence. The report does not load remote images or scripts. Keep the original case folder alongside the report for its relative evidence links to work; hashes detect changed files and do not verify the truth of their contents.
+
 ### Start with a multi-person case
 
 Put a JSON file in the host `workspace/` directory, for example `workspace/intake.json`:
