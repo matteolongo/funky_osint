@@ -16,8 +16,8 @@ NC='\033[0m'
 
 # Directories
 WORKSPACE="${WORKSPACE:-/workspace}"
-if [ "$#" -gt 1 ]; then
-    echo "Usage: osint [username]" >&2
+if [ "$#" -gt 1 ] && ! { [ "$#" -eq 2 ] && [ "$1" = "--case" ]; }; then
+    echo "Usage: osint [username] | osint --case intake.json" >&2
     exit 2
 fi
 if ! mkdir -p "$WORKSPACE" || ! CASE_DIR=$(mktemp -d "$WORKSPACE/osint-$(date +%Y%m%d_%H%M%S)-XXXXXX" 2>/dev/null); then
@@ -302,6 +302,13 @@ main_menu() {
 }
 
 trap 'rm -f "$CASE_DIR/.tmp_usernames" "$CASE_DIR/.tmp_emails" 2>/dev/null' EXIT
+if [ "$#" -eq 2 ]; then
+    python3 "$(dirname "$CASE_STORE")/case_runner.py" "$CASE_DIR" "$2"
+    mapfile -t DISCOVERED_USERNAMES < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("\n".join(i["value"] for i in d["identifiers"] if i["type"] == "username"))' "$CASE_DIR/case.json")
+    mapfile -t DISCOVERED_EMAILS < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("\n".join(i["value"] for i in d["identifiers"] if i["type"] == "email"))' "$CASE_DIR/case.json")
+    mapfile -t DISCOVERED_PHONES < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print("\n".join(i["value"] for i in d["identifiers"] if i["type"] == "phone"))' "$CASE_DIR/case.json")
+    pivot_menu
+fi
 if [ "$#" -eq 1 ]; then
     username_flow "$1"
     pivot_menu

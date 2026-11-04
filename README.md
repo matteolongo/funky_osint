@@ -90,6 +90,30 @@ Or run the script directly:
 
 Imported phone numbers can be selected from the pivot menu. Extracted identifiers are pattern matches and should be verified before treating them as linked accounts.
 
+### Start with a multi-person case
+
+Put a JSON file in the host `workspace/` directory, for example `workspace/intake.json`:
+
+```json
+{
+  "people": [
+    {"name": "Ana", "inputs": [
+      {"type": "phone", "value": "+34123456789", "country_code": "+34", "source": "user supplied"},
+      {"type": "profile", "value": "https://www.instagram.com/example/", "notes": "Known profile"},
+      {"type": "username", "value": "example"}
+    ]},
+    {"name": "Carlos", "inputs": [
+      {"type": "phone", "value": "+34987654321", "country_code": "+34"}
+    ]}
+  ],
+  "relationships": [{"from": 0, "to": 1, "label": "partner"}]
+}
+```
+
+Run `docker compose run --rm kali osint --case /workspace/intake.json`. Input types are `phone`, `email`, `username`, and `profile`. Phone numbers use `+` and digits; `country_code` is optional and enables the Ignorant search. Profile URLs are saved for comparison, not automatically searched as usernames: add an explicit `username` input if you want that search. Names are context, not search queries. Each input can include `source` and `notes`; relationship indexes refer to positions in the `people` list, starting at zero.
+
+The run searches the supplied phone numbers, emails and usernames with the available tools, records missing or failed tools, and then opens the existing pivot menu for manual follow-up. It does not automatically search newly extracted leads. In the dashboard, supplied people and relationships are distinguished from possible matches: exact supplied identifiers mentioned in scan output and exact profile URL matches link back to the evidence. These are leads, not identity verification. The intake file contains personal information; keep it in the workspace and do not commit it.
+
 ## Outputs
 
 All results are saved under a uniquely named `/workspace/osint-YYYYMMDD_HHMMSS-.../` directory with:
