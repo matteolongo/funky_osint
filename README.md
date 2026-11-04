@@ -131,6 +131,7 @@ Create a local `.env` in the repository root using `.env.example` as a guide:
 OPENAI_API_KEY=your-api-key
 OPENAI_MODEL=gpt-5-mini
 OPENAI_REVIEW_TIMEOUT=90
+OPENAI_REVIEW_MAX_REQUESTS=8
 ```
 
 The key is passed only to the runner service. It is not included in the image, case JSON, dashboard environment, or child OSINT tools. `.env` files are ignored by Git and the image build. A host environment variable also works; Compose environment variables take precedence over `.env`.
@@ -148,7 +149,11 @@ docker compose run --rm kali osint --case /workspace/intake.json --review --batc
 
 After every tool, the runner saves output, extracts findings, and requests an OpenAI assessment before starting the next tool. Reviews contain an Italian summary, evidence-linked concerns, and suggested checks. The model can continue the existing plan or pause it; it cannot execute commands, add searches, change evidence, or verify identity. The dashboard displays the assessment separately from original findings.
 
-Enabling review sends supplied case context, this scan's identifiers and profile fields, a short list of preceding scans, and bounded raw-output excerpts to OpenAI. Lists are limited to 30 entries, individual context strings to 800 characters, raw excerpts to 12 KB per file, and total context to 64 KB; large profile lists are reduced further to fit. Coverage is shown in the dashboard. No profile images are uploaded: only their reported URLs may appear as text. The request uses [Responses API structured output](https://developers.openai.com/api/docs/guides/structured-outputs) with `store: false`; that setting does not itself guarantee zero retention under all API data policies. API usage is billed to the configured account.
+Enabling review sends supplied case context, this scan's identifiers and profile fields, a short list of preceding scans, and bounded raw-output excerpts to OpenAI. Every normalized evidence item is assigned to a deterministic batch (at most 16 items, further divided by size). Context lists are limited to 30 entries, individual context strings to 800 characters, initial raw excerpts to 2,000 characters per file, and total context to 64 KB per request. Related profile details accompany an item; shortened details are disclosed. No profile images are uploaded: only their reported URLs may appear as text. The request uses [Responses API structured output](https://developers.openai.com/api/docs/guides/structured-outputs) with `store: false`; that setting does not itself guarantee zero retention under all API data policies. API usage is billed to the configured account.
+
+The dashboard filters findings by model relevance: **relevant**, **uncertain**, **likely noise**, or **unreviewed**. Classification reasons cite saved evidence. These labels describe relevance, not identity certainty, and filtering never removes evidence or changes the all-leads exports. Partial validated batches are visible with reviewed/total counts; missing or duplicate classifications block progression. At most `OPENAI_REVIEW_MAX_REQUESTS` requests (default 8, range 1–100) are issued per scan review invocation. Reaching the cap pauses execution; `--resume` processes another bounded set without repeating completed batches. Failed and interrupted requests can be retried the same way. Older summaries are reviewed again under the new triage schema.
+
+If a saved artifact changes after parsing, review blocks until `--reparse CASE_DIRECTORY` refreshes the derived evidence. Then use `--resume CASE_DIRECTORY` to obtain a current assessment.
 
 The review policy/model is saved in the case. `--resume` retains it even when `--review` is omitted. Completed reviews of unchanged evidence are reused. Timeouts, unavailable credentials, refusals, malformed responses, and API errors block the next scan; an API error is retried on resume. A paused/failed review exits the CLI with code 3; a configuration error exits with code 1.
 

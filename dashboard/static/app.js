@@ -51,6 +51,10 @@ function render() {
     const box = document.createElement('div'); box.className = 'stat'; box.append(text('small',name),text('strong',String(count))); stats.append(box);
   }
   renderIntake(c);
+  const index = triageIndex(c), findings = items(c).filter(i => i.kind !== 'scan');
+  const filter = $('#triage-filter').value;
+  const shown = findings.filter(i => filter === 'all' || itemAssessment(c, i, index) === filter).length;
+  $('#triage-count').textContent = `${shown} of ${findings.length} findings shown · ${findings.filter(i => itemAssessment(c, i, index) === 'unreviewed').length} unreviewed · filtering preserves original evidence`;
   const direct = c.scans.filter(s => !s.parent_scan);
   const counts = new Map();
   for (const scan of direct) counts.set(scan.status, (counts.get(scan.status) || 0) + 1);
@@ -110,9 +114,19 @@ function edges(c) {
     ...c.scans.filter(s => s.parent_scan).map(s => ({source:s.parent_scan,target:s.id,label:'recursive search',scan:s.id})),
     ...c.relationships.map(r => ({...r,scan:r.source}))];
 }
+function filteredItems(c) {
+  const filter = $('#triage-filter').value, index = triageIndex(c);
+  return items(c).filter(i => filter === 'all' || (i.kind !== 'scan' && itemAssessment(c, i, index) === filter));
+}
+function citeEvidence(c, id) {
+  const record = (c.evidence || []).find(e => e.id === id);
+  selectedNode = record ? record.account_id || record.identifier_id || record.scan_id : id;
+  renderGraph(c); renderDetail(c);
+  document.getElementById(`evidence-${id}`)?.scrollIntoView({block:'center'});
+}
 function renderGraph(c) {
   const graph = $('#graph'); graph.replaceChildren();
-  const all = items(c), groups = ['identifier','scan','account'].map(kind => all.filter(i => i.kind === kind));
+  const all = filteredItems(c), groups = ['identifier','scan','account'].map(kind => all.filter(i => i.kind === kind));
   const height = Math.max(280, ...groups.map(group => group.length * 72 + 55));
   const svg = document.createElementNS(svgNS,'svg'); svg.setAttribute('viewBox',`0 0 900 ${height}`); svg.setAttribute('role','img'); svg.setAttribute('aria-label','Relationship map: select a node to inspect evidence');
   const positions = new Map();
@@ -138,10 +152,13 @@ function renderGraph(c) {
 }
 function renderList(c) {
   const target=$('#findings'); target.replaceChildren(); const query=$('#search').value.toLowerCase();
-  for(const item of items(c).filter(i=>`${label(i,i.kind)} ${i.kind} ${i.type||''}`.toLowerCase().includes(query))) {
+  const index = triageIndex(c);
+  for(const item of filteredItems(c).filter(i=>`${label(i,i.kind)} ${i.kind} ${i.type||''}`.toLowerCase().includes(query))) {
     const b=button('',()=>{selectedNode=item.id;renderDetail(c);},'finding');
     if(item.kind==='account'){const image=profileImage(item);if(image){image.classList.add('finding-image');b.append(image);}}
-    b.append(text('strong',label(item,item.kind)),text('small',item.type||item.kind));target.append(b);
+    b.append(text('strong',label(item,item.kind)),text('small',item.type||item.kind));
+    if(item.kind !== 'scan') b.append(text('small',`Model: ${itemAssessment(c,item,index).replaceAll('_',' ')}`));
+    target.append(b);
   }
   if(!target.childNodes.length) target.append(text('p','No matching findings.','footnote'));
 }
@@ -158,10 +175,12 @@ function profileImage(account) {
 }
 function renderEvidenceCards(c, item, detail) {
   const scans = new Map(c.scans.map(scan => [scan.id, scan]));
+  const assessments = triageIndex(c);
   for (const evidence of c.evidence || []) {
     const scan = scans.get(evidence.scan_id);
     if (!scan || ![evidence.account_id, evidence.identifier_id, evidence.scan_id].includes(item.id)) continue;
     const card = document.createElement('div');
+    card.id = `evidence-${evidence.id}`;
     card.className = 'observation';
     const source = evidence.field || (evidence.account_id ? 'Profile output' : 'Scan output');
     const location = evidence.line ? `${source} (line ${evidence.line}${evidence.end_line ? `–${evidence.end_line}` : ''})` : source;
@@ -169,6 +188,9 @@ function renderEvidenceCards(c, item, detail) {
     const value = typeof evidence.value === 'string' ? evidence.value : JSON.stringify(evidence.value);
     card.append(text('h3', location), text('p', value),
       text('p', [scan.tool, time && new Date(time).toLocaleString()].filter(Boolean).join(' · '), 'meta'));
+    const assessment = assessments.get(evidence.id);
+    card.append(text('p', assessment ? `Model: ${assessment.label.replaceAll('_',' ')} · ${assessment.rationale}` : 'Model: unreviewed'));
+    for(const id of assessment?.evidence_ids || []) if(id !== evidence.id) card.append(button('View supporting evidence',()=>citeEvidence(c,id)));
     const raw = text('a', `Open raw evidence · ${evidence.filename}`);
     raw.href = `/api/cases/${encodeURIComponent(c.id)}/evidence/${encodeURIComponent(evidence.filename)}`;
     raw.target = '_blank';
@@ -233,14 +255,15 @@ function renderReviews(c, scan, detail) {
   for(const [index, review] of (scan.reviews || []).entries()) {
     group.append(text('h4',`Review ${index+1} · ${review.status}${review.model ? ` · ${review.model}` : ''}`));
     if(review.error) group.append(text('p',review.error));
+    if(review.coverage?.total !== undefined) group.append(text('p',`${review.coverage.reviewed} of ${review.coverage.total} evidence items reviewed · ${review.coverage.completed_batches} of ${review.coverage.total_batches} batches. ${review.coverage.note}`));
     if(review.result) {
       const verdict = review.status === 'stale' ? 'Evidence changed; a new review is required' : review.approval ? 'Approved by user' : review.result.decision === 'pause' ? 'Manual attention required' : 'May proceed with the existing plan';
       group.append(text('strong',verdict),text('p',review.result.summary));
       if(review.coverage) group.append(text('p',`Profile coverage: ${review.coverage.included_accounts} of ${review.coverage.reported_accounts} reported accounts. ${review.coverage.note}`,'meta'));
       for(const finding of review.result.findings) {
         group.append(text('p',`${finding.severity}: ${finding.description}`));
-        for(const id of finding.evidence_ids) if(items(c).some(i=>i.id === id)) {
-          group.append(button('View cited evidence',()=>{selectedNode=id;renderGraph(c);renderDetail(c);}));
+        for(const id of finding.evidence_ids) if(items(c).some(i=>i.id === id) || (c.evidence || []).some(e=>e.id === id)) {
+          group.append(button('View cited evidence',()=>citeEvidence(c,id)));
         }
       }
       if(review.result.suggested_checks.length) {
@@ -258,5 +281,6 @@ function renderReviews(c, scan, detail) {
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;render();}));
 $('#search').addEventListener('input',()=>{const c=cases.find(item=>item.id===selectedCase);if(c)renderList(visibleCase(c));});
 $('#recursive').addEventListener('change',()=>render());
+$('#triage-filter').addEventListener('change',()=>render());
 async function refresh(){try{const response=await fetch('/api/cases');if(!response.ok)throw new Error();const next=await response.json();if(JSON.stringify(next)===JSON.stringify(cases))return;cases=next;if(selectedCase&&!cases.some(c=>c.id===selectedCase))selectedCase=null;render();}catch{$('#subtitle').textContent='Unable to read the workspace. Retrying…';}}
 refresh();setInterval(refresh,10000);
