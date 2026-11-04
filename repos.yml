@@ -1,9 +1,9 @@
 # repos.yml
-# Tools to auto-install inside the Kali container on first start
+# Pinned tools installed at image build time; adapters control runtime behavior.
 tools:
   - name: phoneinfoga
     repo: https://github.com/sundowndev/phoneinfoga.git
-    ref: master
+    ref: 55807b05b753dab7bc6fe67403ca385668dda179
     dest: /tools/phoneinfoga
     enabled: true
     build:
@@ -22,7 +22,8 @@ tools:
 
   - name: sherlock
     repo: https://github.com/sherlock-project/sherlock.git
-    ref: master
+    ref: e40a45ec2a074b90703b3b4b842c8a3adbd6ada3
+    python_env: true
     dest: /tools/sherlock
     enabled: true
     build:
@@ -30,6 +31,7 @@ tools:
         - git
         - python3
         - python3-pip
+        - python3-venv
       pre_cmds: []
       cmds:
         - pip3 install --no-cache-dir .
@@ -37,7 +39,8 @@ tools:
 
   - name: maigret
     repo: https://github.com/soxoj/maigret.git
-    ref: main
+    ref: 467ce79812756d6c4d5864a223479e6cb89a775f
+    python_env: true
     dest: /tools/maigret
     enabled: true
     build:
@@ -45,6 +48,7 @@ tools:
         - git
         - python3
         - python3-pip
+        - python3-venv
       pre_cmds: []
       cmds:
         - pip3 install --no-cache-dir .
@@ -52,7 +56,8 @@ tools:
 
   - name: holehe
     repo: https://github.com/megadose/holehe.git
-    ref: master
+    ref: 14da70f588538936b20d238783c5e28a0772a2b3
+    python_env: true
     dest: /tools/holehe
     enabled: true
     build:
@@ -60,6 +65,7 @@ tools:
         - git
         - python3
         - python3-pip
+        - python3-venv
       pre_cmds: []
       cmds:
         - pip3 install --no-cache-dir .
@@ -67,7 +73,8 @@ tools:
 
   - name: ignorant
     repo: https://github.com/megadose/ignorant.git
-    ref: master
+    ref: 40b3eb734ef3d55e6d16eb314e49dbf520fa1f64
+    python_env: true
     dest: /tools/ignorant
     enabled: true
     build:
@@ -75,6 +82,7 @@ tools:
         - git
         - python3
         - python3-pip
+        - python3-venv
       pre_cmds: []
       cmds:
         - pip3 install --no-cache-dir .

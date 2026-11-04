@@ -6,16 +6,13 @@ services:
     container_name: osint_me_kali
     tty: true
     stdin_open: true
-    ports:
-      - "8080:8080"
+    init: true
     volumes:
       - ./workspace:/workspace
     working_dir: /workspace
     command: ["bash", "-l"]
   dashboard:
     image: osint_me:local
-    depends_on:
-      - kali
     command: ["python3", "/dashboard/server.py"]
     ports:
       - "127.0.0.1:8765:8080"

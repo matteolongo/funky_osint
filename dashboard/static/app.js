@@ -51,6 +51,12 @@ function render() {
     const box = document.createElement('div'); box.className = 'stat'; box.append(text('small',name),text('strong',String(count))); stats.append(box);
   }
   renderIntake(c);
+  const direct = c.scans.filter(s => !s.parent_scan);
+  const counts = new Map();
+  for (const scan of direct) counts.set(scan.status, (counts.get(scan.status) || 0) + 1);
+  const parseFailures = direct.filter(s => s.parse_status === 'failed').length;
+  $('#scan-progress').textContent = [...counts].map(([state, count]) => `${count} ${state.replaceAll('_', ' ')}`).join(' · ')
+    + (parseFailures ? ` · ${parseFailures} output(s) need parsing; original evidence is saved` : '');
   $('#graph-view').hidden = view !== 'graph'; $('#list-view').hidden = view !== 'list';
   document.querySelectorAll('.tab').forEach(b => { b.classList.toggle('active', b.dataset.view === view); b.setAttribute('aria-selected', String(b.dataset.view === view)); });
   renderGraph(c); renderList(c); renderDetail(c);
@@ -150,7 +156,16 @@ function renderDetail(c) {
   if(item.kind==='scan') {
     const target=all.find(i=>i.id===item.target);
     detail.append(text('p',`${item.scope === 'recursive' ? 'Recursive search' : 'Direct search'} for ${target?.value || 'unknown identifier'} · ${item.status}. Evidence is the original tool output.`));
-    const b=button('Show original output',async()=>{b.disabled=true;try{const response=await fetch(`/api/cases/${encodeURIComponent(c.id)}/evidence/${encodeURIComponent(item.output)}`);if(!response.ok)throw new Error();const pre=document.createElement('pre');pre.textContent=await response.text();detail.append(pre);b.remove();}catch{b.disabled=false;detail.append(text('p','Could not load scan output.'));}});detail.append(b);
+    if(item.error) detail.append(text('p',item.error));
+    if(item.parse_status === 'failed') detail.append(text('p',`Output saved; parsing failed: ${item.parse_error || 'Unknown format'}`));
+    if(['failed','timed_out','interrupted'].includes(item.status)) detail.append(text('p','Findings from this attempt may be incomplete.'));
+    if(item.started_at) detail.append(text('p',`Started: ${new Date(item.started_at).toLocaleString()}${item.finished_at ? ` · Finished: ${new Date(item.finished_at).toLocaleString()}` : ''}`));
+    if(item.tool_version) detail.append(text('p',`Tool revision: ${item.tool_version} · Parser: ${item.parser_version || 'not run'}`,'meta'));
+    for(const [filename, title] of [[item.output,'Show original output'],[item.structured_output,'Show structured report']]) {
+      if(!filename || item.status === 'pending') continue;
+      const b=button(title,async()=>{b.disabled=true;try{const response=await fetch(`/api/cases/${encodeURIComponent(c.id)}/evidence/${encodeURIComponent(filename)}`);if(!response.ok)throw new Error();const pre=document.createElement('pre');pre.textContent=await response.text();detail.append(pre);b.remove();}catch{b.disabled=false;detail.append(text('p','Output is not available yet. Try again after the scan starts.'));}});detail.append(b);
+    }
+    if(item.previous_attempt) detail.append(button('View previous attempt',()=>{selectedNode=item.previous_attempt;renderGraph(c);renderDetail(c);}));
     if(item.checks?.length){const group=document.createElement('div');group.className='observation';group.append(text('h3','Site checks'));const list=document.createElement('dl');list.className='profile-fields';for(const check of item.checks){list.append(text('dt',check.site),text('dd',check.status));}group.append(list);detail.append(group);}
   }
   if(item.kind==='account') {

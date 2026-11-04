@@ -1,16 +1,17 @@
 import importlib.util
 import json
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 spec = importlib.util.spec_from_file_location('case_store', ROOT / 'scripts/case_store.py')
 store = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(store)
-sys.path.insert(0, str(ROOT / 'scripts'))
 
 
 class CaseIntakeTests(unittest.TestCase):
@@ -55,10 +56,14 @@ class CaseIntakeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             case = Path(tmp)
             intake = {'people': [{'name': 'Ana', 'inputs': [{'type': 'username', 'value': 'ana'}]}]}
-            with patch.object(runner.shutil, 'which', side_effect=lambda name: name if name in ('maigret', 'sherlock') else None), \
-                 patch.object(runner.subprocess, 'run', side_effect=[OSError('unavailable'), unittest.mock.Mock(returncode=0)]) as run:
+            real_popen = subprocess.Popen
+            def start(command, **kwargs):
+                if '--no-recursion' in command:
+                    raise OSError('unavailable')
+                return real_popen([sys.executable, '-c', 'print("ok")'], **kwargs)
+            with patch.object(runner.shutil, 'which', return_value=sys.executable), \
+                 patch.object(runner.subprocess, 'Popen', side_effect=start):
                 runner.run_case(case, intake)
-            self.assertIn('--no-recursion', run.call_args_list[0].args[0])
             data = json.loads((case / 'case.json').read_text(encoding='utf-8'))
             self.assertEqual([scan['status'] for scan in data['scans']], ['failed', 'completed'])
             self.assertTrue(all((case / scan['output']).exists() for scan in data['scans']))

@@ -1,6 +1,6 @@
 # osint_me
 
-A minimal Kali Linux Docker setup for OSINT investigations with automatic installation of common phone number & social account enumeration tools, plus a smart pivoting workflow.
+A local OSINT case workspace: a Python runner coordinates independent tools, preserves their evidence, and exposes accounts and possible relationships in a read-only dashboard. An interactive CLI and JSON case intake use the same execution engine.
 
 ## Structure
 
@@ -11,9 +11,13 @@ osint_me/
 ├── repos.yml           # List of repos to clone/build into the image
 ├── dashboard/          # Read-only case dashboard and API
 ├── scripts/
-│   ├── install-tools.sh # Build-time installer (reads repos.yml and builds tools)
-│   ├── case_store.py    # Structured case data and evidence links
-│   └── osint-flow.sh    # Smart pivoting workflow (phone -> username -> email etc.)
+│   ├── install_tools.py # Pinned builds and isolated Python environments
+│   ├── adapters/        # Tool commands and output parsers
+│   ├── case_runner.py  # Scheduling, deadlines, attempts and recovery
+│   ├── case_store.py   # Case persistence, parsing and writer lock
+│   ├── evidence.py     # Shared evidence extraction helpers
+│   ├── osint_cli.py    # Interactive menus and batch commands
+│   └── osint-flow.sh   # Compatibility launcher for the Python CLI
 └── workspace/          # Investigation outputs (mounted to /workspace in container)
 ```
 
@@ -77,7 +81,7 @@ Or run the script directly:
 
 ### Start from a username
 1. `osint` → `2) Username` → enter username
-2. Runs `maigret` (comprehensive) then `sherlock` for extra coverage
+2. Runs `maigret` without automatic recursion, then `sherlock` for extra coverage
 3. Extracts emails/usernames from results and offers to pivot
 
 ### Start from an email
@@ -89,6 +93,33 @@ Or run the script directly:
 `osint` → `4) Load pivots from file` and provide a file with one identifier per line (phone, email, or username). Lines starting with `#` are ignored.
 
 Imported phone numbers can be selected from the pivot menu. Extracted identifiers are pattern matches and should be verified before treating them as linked accounts.
+
+### Batch, resume, rerun and reparse
+
+Run without interactive prompts:
+
+```bash
+docker compose run --rm kali osint example_username --batch --timeout 300
+docker compose run --rm kali osint --case /workspace/intake.json --batch
+```
+
+The timeout is a deadline for each whole tool process, including its network requests (default: 300 seconds). Tools run sequentially. Missing tools, failures and timeouts are recorded and do not stop other searches. Output is saved even when a tool fails; findings from an incomplete attempt are labelled accordingly in the dashboard. Maigret's per-request timeout is separately set to 10 seconds.
+
+Resume a case using its directory printed by the CLI:
+
+```bash
+docker compose run --rm kali osint --resume /workspace/osint-YYYYMMDD_HHMMSS-example --batch
+```
+
+Resume runs pending tasks and creates new attempts for unsuccessful tasks. Completed tasks are skipped; it does not search newly discovered leads. Add `--rerun` to explicitly repeat completed tasks too. Each attempt retains its own raw output, reports, settings, timestamps and tool revision. `--timeout` on resume changes the deadline for pending/new attempts; historical records stay unchanged. Cases created before the resumable runner can still be viewed and reparsed but have no saved execution plan to resume.
+
+To apply a parser fix to existing evidence without making network requests:
+
+```bash
+docker compose run --rm kali osint --reparse /workspace/osint-YYYYMMDD_HHMMSS-example
+```
+
+Parsing and execution have separate statuses. A parsing error leaves the original evidence and previously extracted results intact. Reparse replaces that attempt's observations instead of duplicating them. Only one writer can modify a case at a time; the dashboard continues reading atomic JSON snapshots. Ctrl+C and container termination stop the active process group and save the interruption; a stale running scan is marked interrupted when the case is resumed.
 
 ### Start with a multi-person case
 
@@ -119,6 +150,8 @@ The run searches the supplied phone numbers, emails and usernames with the avail
 All results are saved under a uniquely named `/workspace/osint-YYYYMMDD_HHMMSS-.../` directory with:
 - `case.json`, which records identifiers, scans, reported accounts, and evidence links
 - A separate raw output file for each scan
+- Structured reports where available (Maigret JSON), exposed as evidence in the dashboard
+- `artifacts/<scan-id>/` for each attempt's additional tool-generated files
 - Pivot lists (`pivot_usernames.txt`, `pivot_emails.txt`)
 - Target files for each starting point
 
@@ -126,9 +159,13 @@ The dashboard links an identifier to each search, and a search to accounts expli
 
 ## Extending and testing
 
-Add installation details to `repos.yml` to install another tool. To use it in the interactive workflow, also add its invocation and any output extraction to `scripts/osint-flow.sh`; installation alone does not add a menu action. Keep tool failures isolated so other searches can continue.
+Add installation details with a full commit SHA to `repos.yml`, then add a module in `scripts/adapters/` and register it in `scripts/adapters/__init__.py`. Each adapter declares its input kind, builds an argument list and parses its output. Returning `None` from its argument builder means the supplied input lacks required information. Use `python_env: true` for Python tools. Both interactive and batch workflows automatically use registered adapters for the selected input kind; the shell launcher contains no tool-specific logic.
 
-Run the focused workflow checks with `bash tests/osint-flow-test.sh` and the dashboard checks with `python3 tests/test_dashboard.py`; check shell syntax with `bash -n scripts/*.sh tests/*.sh`. After building, run `bash tests/image-smoke-test.sh` to check the image's tools and workflow without querying external services. Set `WORKSPACE` to change where the workflow writes cases (the default is `/workspace`).
+Use structured output when the pinned tool supports it, and include a representative synthetic fixture test. Maigret prefers its simple JSON report, with text parsing retained for interrupted runs and older evidence. Increment the adapter's parser version when changing its interpretation of output. Profiles, extracted identifiers and pictures remain source-backed leads; finding the same username does not prove identity.
+
+Run only the tests affected by a local change. Runner checks are in `tests/test_runner.py`, CLI checks in `tests/test_cli.py`, and Linux cancellation checks in `tests/test_runner_signals.py`. Existing workflow checks are `bash tests/osint-flow-test.sh`; select affected methods from `tests/test_dashboard.py` and `tests/test_case_intake.py`. Check shell syntax with `bash -n scripts/*.sh tests/*.sh`. CI runs the full suite. After building, run `bash tests/image-smoke-test.sh IMAGE_TAG` to check the image's tools and workflow without querying external services. Set `WORKSPACE` to change where the workflow writes cases (the default is `/workspace`).
+
+Each Python tool has an independent environment under `/opt/tools/<name>`. The installer checks each environment's dependencies and writes source revisions and resolved package versions to `/tools/versions.json`. Tool revisions are pinned; OS packages and transitive Python dependencies are resolved at build time, so an uncached rebuild is not guaranteed to be byte-identical. Application-only edits reuse the dependency and tool installation layers.
 
 ## Tips
 
@@ -136,7 +173,7 @@ Run the focused workflow checks with `bash tests/osint-flow-test.sh` and the das
 - `maigret` can take a while with `-a` (all sites). The workflow uses reasonable timeouts by default.
 - If a tool isn't installed (or build failed), the workflow will just skip it gracefully.
 - After editing `repos.yml` or the scripts, rebuild and recreate the container with `docker compose up -d --build`.
-- Configured branches and the Kali base image can change upstream; rebuilding without cache fetches current versions.
+- Update the pinned commit in `repos.yml` deliberately when upgrading a tool, then validate its adapter fixtures and rebuild.
 
 ## Troubleshooting
 
