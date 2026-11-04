@@ -15,6 +15,6 @@ class Tool:
 
 from . import holehe, ignorant, maigret, phoneinfoga, sherlock
 
-TOOLS = {module.NAME: Tool(module.NAME, module.KIND, module.arguments, module.parse,
+TOOLS = {module.NAME: Tool(module.NAME, module.KIND, module.arguments, module.parse, parser_version=2,
                           report_name=getattr(module, 'report_name', None))
          for module in (maigret, sherlock, holehe, phoneinfoga, ignorant)}

@@ -156,6 +156,34 @@ function profileImage(account) {
   }
   return null;
 }
+function renderEvidenceCards(c, item, detail) {
+  const scans = new Map(c.scans.map(scan => [scan.id, scan]));
+  for (const evidence of c.evidence || []) {
+    const scan = scans.get(evidence.scan_id);
+    if (!scan || ![evidence.account_id, evidence.identifier_id, evidence.scan_id].includes(item.id)) continue;
+    const card = document.createElement('div');
+    card.className = 'observation';
+    const source = evidence.field || (evidence.account_id ? 'Profile output' : 'Scan output');
+    const location = evidence.line ? `${source} (line ${evidence.line}${evidence.end_line ? `–${evidence.end_line}` : ''})` : source;
+    const time = scan.finished_at || scan.created_at;
+    const value = typeof evidence.value === 'string' ? evidence.value : JSON.stringify(evidence.value);
+    card.append(text('h3', location), text('p', value),
+      text('p', [scan.tool, time && new Date(time).toLocaleString()].filter(Boolean).join(' · '), 'meta'));
+    const raw = text('a', `Open raw evidence · ${evidence.filename}`);
+    raw.href = `/api/cases/${encodeURIComponent(c.id)}/evidence/${encodeURIComponent(evidence.filename)}`;
+    raw.target = '_blank';
+    raw.rel = 'noopener noreferrer';
+    card.append(raw);
+    for (const [id, title] of [[evidence.account_id, 'View source account'], [scan.id, 'View source scan']]) {
+      if (id && id !== item.id) card.append(button(title, () => {
+        selectedNode = id;
+        renderGraph(c);
+        renderDetail(c);
+      }));
+    }
+    detail.append(card);
+  }
+}
 function renderDetail(c) {
   const detail=$('#detail'), all=items(c), item=all.find(i=>i.id===selectedNode); if(!item) { detail.replaceChildren(text('h2','Explore a finding'),text('p','Select an item in the map or list to see its connections and evidence.')); return; }
   detail.replaceChildren(text('div',item.kind==='identifier'?item.type:item.kind,'meta'),text('h2',label(item,item.kind)));
@@ -189,6 +217,7 @@ function renderDetail(c) {
       if(source)group.append(button('View source scan',()=>{selectedNode=source.id;renderGraph(c);renderDetail(c);}));detail.append(group);
     }
   }
+  renderEvidenceCards(c, item, detail);
   const related=edges(c).filter(e=>e.source===item.id||e.target===item.id);
   if(related.length){detail.append(text('p','Connected findings'));for(const edge of related){const other=all.find(i=>i.id===(edge.source===item.id?edge.target:edge.source));if(other) detail.append(button(`${edge.label} · ${label(other,other.kind)}`,()=>{selectedNode=other.id;renderGraph(c);renderDetail(c);}));}}
 }

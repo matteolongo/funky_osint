@@ -1,6 +1,5 @@
 import json
-import re
-from evidence import add_mentions, parse_accounts, reported_account
+from evidence import add_profile_field, parse_accounts, reported_account
 
 NAME, KIND = 'maigret', 'username'
 
@@ -23,16 +22,16 @@ def parse(data, scan, content):
             status = result['status']
             if status['status'].lower() != 'claimed':
                 continue
-            observation = reported_account(data, scan, site, status['url'])
+            path = '/' + site.replace('~', '~0').replace('/', '~1') + '/status'
+            observation = reported_account(data, scan, site, status['url'], field=path + '/url')
             if observation is None:
                 continue
             fields = status.get('ids') or {}
             if not isinstance(fields, dict):
                 raise ValueError('Expected a Maigret profile field mapping')
-            observation['fields'].update(fields)
             for key, value in fields.items():
-                if isinstance(value, str):
-                    add_mentions(data, scan, f"{key}: {re.sub(r'https?://\S+', '', value)}")
+                field = path + '/ids/' + key.replace('~', '~0').replace('/', '~1')
+                add_profile_field(data, scan, observation, key, value, field=field)
         return
     target = next(i for i in data['identifiers'] if i['id'] == scan['target'])
     parse_accounts(data, scan, target['type'], target['value'], content)
