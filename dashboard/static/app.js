@@ -57,6 +57,12 @@ function render() {
   const parseFailures = direct.filter(s => s.parse_status === 'failed').length;
   $('#scan-progress').textContent = [...counts].map(([state, count]) => `${count} ${state.replaceAll('_', ' ')}`).join(' · ')
     + (parseFailures ? ` · ${parseFailures} output(s) need parsing; original evidence is saved` : '');
+  if(c.review_policy) {
+    const awaiting = direct.filter(s => s.status !== 'pending' && s.status !== 'running' &&
+      (!s.reviews?.length || s.reviews.at(-1).status !== 'completed' ||
+       (s.reviews.at(-1).result?.decision === 'pause' && !s.reviews.at(-1).approval)));
+    $('#scan-progress').textContent += ` · OpenAI review required${awaiting.length ? ` · ${awaiting.length} review(s) awaiting completion or attention` : ''}`;
+  }
   $('#graph-view').hidden = view !== 'graph'; $('#list-view').hidden = view !== 'list';
   document.querySelectorAll('.tab').forEach(b => { b.classList.toggle('active', b.dataset.view === view); b.setAttribute('aria-selected', String(b.dataset.view === view)); });
   renderGraph(c); renderList(c); renderDetail(c);
@@ -166,6 +172,7 @@ function renderDetail(c) {
       const b=button(title,async()=>{b.disabled=true;try{const response=await fetch(`/api/cases/${encodeURIComponent(c.id)}/evidence/${encodeURIComponent(filename)}`);if(!response.ok)throw new Error();const pre=document.createElement('pre');pre.textContent=await response.text();detail.append(pre);b.remove();}catch{b.disabled=false;detail.append(text('p','Output is not available yet. Try again after the scan starts.'));}});detail.append(b);
     }
     if(item.previous_attempt) detail.append(button('View previous attempt',()=>{selectedNode=item.previous_attempt;renderGraph(c);renderDetail(c);}));
+    renderReviews(c, item, detail);
     if(item.checks?.length){const group=document.createElement('div');group.className='observation';group.append(text('h3','Site checks'));const list=document.createElement('dl');list.className='profile-fields';for(const check of item.checks){list.append(text('dt',check.site),text('dd',check.status));}group.append(list);detail.append(group);}
   }
   if(item.kind==='account') {
@@ -185,6 +192,40 @@ function renderDetail(c) {
   const related=edges(c).filter(e=>e.source===item.id||e.target===item.id);
   if(related.length){detail.append(text('p','Connected findings'));for(const edge of related){const other=all.find(i=>i.id===(edge.source===item.id?edge.target:edge.source));if(other) detail.append(button(`${edge.label} · ${label(other,other.kind)}`,()=>{selectedNode=other.id;renderGraph(c);renderDetail(c);}));}}
 }
+function renderReviews(c, scan, detail) {
+  if(!c.review_policy) return;
+  const group=document.createElement('div'); group.className='observation';
+  group.append(text('h3','OpenAI review'),text('p','Model assessment of the saved evidence; it does not verify identity.'));
+  if(scan.parent_scan) {
+    group.append(button('View parent scan review',()=>{selectedNode=scan.parent_scan;renderGraph(c);renderDetail(c);}));
+    detail.append(group); return;
+  }
+  if(!scan.reviews?.length) group.append(text('p','Review will run after this scan.'));
+  for(const [index, review] of (scan.reviews || []).entries()) {
+    group.append(text('h4',`Review ${index+1} · ${review.status}${review.model ? ` · ${review.model}` : ''}`));
+    if(review.error) group.append(text('p',review.error));
+    if(review.result) {
+      const verdict = review.status === 'stale' ? 'Evidence changed; a new review is required' : review.approval ? 'Approved by user' : review.result.decision === 'pause' ? 'Manual attention required' : 'May proceed with the existing plan';
+      group.append(text('strong',verdict),text('p',review.result.summary));
+      if(review.coverage) group.append(text('p',`Profile coverage: ${review.coverage.included_accounts} of ${review.coverage.reported_accounts} reported accounts. ${review.coverage.note}`,'meta'));
+      for(const finding of review.result.findings) {
+        group.append(text('p',`${finding.severity}: ${finding.description}`));
+        for(const id of finding.evidence_ids) if(items(c).some(i=>i.id === id)) {
+          group.append(button('View cited evidence',()=>{selectedNode=id;renderGraph(c);renderDetail(c);}));
+        }
+      }
+      if(review.result.suggested_checks.length) {
+        group.append(text('h4','Suggested checks (not executed)'));
+        const list=document.createElement('ul');
+        for(const suggestion of review.result.suggested_checks) list.append(text('li',suggestion));
+        group.append(list);
+      }
+    }
+    if(review.approval) group.append(text('p',`Manually approved: ${review.approval.note}`));
+  }
+  detail.append(group);
+}
+
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;render();}));
 $('#search').addEventListener('input',()=>{const c=cases.find(item=>item.id===selectedCase);if(c)renderList(visibleCase(c));});
 $('#recursive').addEventListener('change',()=>render());

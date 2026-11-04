@@ -55,6 +55,14 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(list(self.workspace.glob('osint-*')), [])
 
+    def test_review_requires_key_before_creating_case(self):
+        from unittest.mock import patch
+        with patch.dict(os.environ, {'OPENAI_API_KEY': ''}):
+            result = self.cli('alice', '--review', '--batch')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('OPENAI_API_KEY', result.stderr)
+        self.assertEqual(list(self.workspace.glob('osint-*')), [])
+
 
 if __name__ == '__main__':
     unittest.main()
