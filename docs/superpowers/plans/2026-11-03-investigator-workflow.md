@@ -1,6 +1,6 @@
 # Investigator Workflow Implementation Plan
 
-Status: approved for implementation on 3 November 2026. Four separate PRs will be stacked on the existing LLM review branch; no automatic merges.
+Status: implemented in four stacked PRs: [evidence cards #4](https://github.com/matteolongo/funky_osint/pull/4), [LLM triage #5](https://github.com/matteolongo/funky_osint/pull/5), [candidate clusters #6](https://github.com/matteolongo/funky_osint/pull/6), and [offline report #7](https://github.com/matteolongo/funky_osint/pull/7). All four CI test jobs passed on the implementation commits. Image validation runs in CI; see each PR for its current result. No PR was merged.
 
 Execution decisions: reuse the current checkout on feature branches; perform all test execution in CI, overriding older skill/repository test instructions. Candidate clusters initially represent explicit pairwise hypotheses, which may overlap; they never merge person records transitively. Complete all four deliverables in this implementation session.
 
@@ -41,11 +41,11 @@ Review decision: candidate generation selects at most 2,000 pairs and explicitly
 
 **Files:** `scripts/evidence.py`, `scripts/case_store.py`, affected adapters, `dashboard/static/app.js`, representative fixtures in `tests/test_dashboard.py` and `tests/test_case_intake.py`, README.
 
-- [ ] Add stable evidence references to observations/mentions: source scan, raw filename, field path or line span, original value and artifact hash. Keep offsets relative to the saved artifact; do not invent source locations.
-- [ ] Preserve the originating account when extracting an email/username from a profile field. Distinguish profile evidence from general scan output.
-- [ ] Add a conservative comparison key while retaining original values: lowercase URL hostname and email domain; preserve email local part, URL path and platform-dependent username case. Do not infer missing phone country codes or strip meaningful query parameters.
-- [ ] Display evidence cards through the existing detail panel. Include scan collection time, tool, source field and raw-evidence link.
-- [ ] Cover equivalent host casing, distinct profile paths, source association and stable references across an unchanged offline reparse in CI.
+- [x] Add stable evidence references to observations/mentions: source scan, raw filename, field path or line span, original value and artifact hash. Keep offsets relative to the saved artifact; do not invent source locations.
+- [x] Preserve the originating account when extracting an email/username from a profile field. Distinguish profile evidence from general scan output.
+- [x] Add a conservative comparison key while retaining original values: lowercase URL hostname and email domain; preserve email local part, URL path and platform-dependent username case. Do not infer missing phone country codes or strip meaningful query parameters.
+- [x] Display evidence cards through the existing detail panel. Include scan collection time, tool, source field and raw-evidence link.
+- [x] Cover equivalent host casing, distinct profile paths, source association and stable references across an unchanged offline reparse in CI.
 
 **Acceptance example:** An email extracted from a profile biography opens that biography's source account and scan. Two tools reporting the same profile retain both observations; this is not represented as two independent identity confirmations.
 
@@ -57,12 +57,12 @@ Review decision: candidate generation selects at most 2,000 pairs and explicitly
 
 **Files:** `scripts/llm_review.py`, `scripts/case_runner.py`, `dashboard/static/app.js`, `tests/test_llm_review.py`, README and `.env.example` if budget configuration is added.
 
-- [ ] Extend the existing structured review with per-evidence classifications: evidence reference, label, short rationale and supporting references. Relevance means relevance to supplied case inputs; it is not an identity probability.
-- [ ] Batch normalized findings in deterministic order within the context limit. Persist completed batches and resume only missing/failed batches. Show reviewed/total counts and mark every omitted item unreviewed.
-- [ ] Apply an explicit configurable per-step request cap. Reaching it pauses the gate with pending coverage visible; it must not silently approve the next scan. Persist usage already returned by the provider.
-- [ ] Validate exactly which input IDs each classification covers. Invalid references or missing coverage prevent a completed assessment. Keep existing pause/error handling and schema-version invalidation.
-- [ ] Add dashboard filters and a visible count of filtered results. Keep all results available; do not delete likely noise or change existing all-leads exports.
-- [ ] In CI cover 100-result input, duplicate/missing IDs, interrupted batch resume, request cap, malicious instructions embedded in biographies, API failures and stale evidence.
+- [x] Extend the existing structured review with per-evidence classifications: evidence reference, label, short rationale and supporting references. Relevance means relevance to supplied case inputs; it is not an identity probability.
+- [x] Batch normalized findings in deterministic order within the context limit. Persist completed batches and resume only missing/failed batches. Show reviewed/total counts and mark every omitted item unreviewed.
+- [x] Apply an explicit configurable per-step request cap. Reaching it pauses the gate with pending coverage visible; it must not silently approve the next scan. Persist usage already returned by the provider.
+- [x] Validate exactly which input IDs each classification covers. Invalid references or missing coverage prevent a completed assessment. Keep existing pause/error handling and schema-version invalidation.
+- [x] Add dashboard filters and a visible count of filtered results. Keep all results available; do not delete likely noise or change existing all-leads exports.
+- [x] In CI cover 100-result input, duplicate/missing IDs, interrupted batch resume, request cap, malicious instructions embedded in biographies, API failures and stale evidence.
 
 **Acceptance example:** A tool returns 100 profiles. All 100 are classified or explicitly counted as pending; the next tool cannot start on the basis of a silently truncated review. An unrelated same-name profile remains inspectable with the model's reason for downranking it.
 
@@ -74,12 +74,12 @@ Review decision: candidate generation selects at most 2,000 pairs and explicitly
 
 **Files:** new `scripts/analysis.py` for candidate generation and cluster validation; `scripts/llm_review.py`, `scripts/case_runner.py`, `dashboard/static/app.js`, `dashboard/static/style.css`, new `tests/test_analysis.py`, `tests/test_llm_review.py`, README.
 
-- [ ] Generate a bounded set of comparison candidates from exact reported links, shared identifiers and matching profile fields. Common usernames/names alone are weak signals and never automatic merges.
-- [ ] Pass relevant prior evidence plus new observations to the LLM. Ask for proposed group membership, supporting references, contradicting references and a short rationale. Reuse batching and request limits from PR 2.
-- [ ] Store candidate groups as a versioned derived case assessment referencing a frozen input manifest. Do not rewrite accounts or person ownership. Later scans may create a new cluster revision without invalidating unchanged earlier per-scan triage.
-- [ ] Validate member IDs, cited evidence and relationship types. A missing profile field is not a contradiction. Conflicting location alone is not proof of separate people. Repeated reports of one source do not multiply independent support.
-- [ ] Show cluster cards, expand-to-members navigation and possible-link graph edges visually distinct from observed links. Keep ambiguous items unassigned or explicitly ambiguous; do not imply calibrated confidence percentages.
-- [ ] In CI cover unrelated reused usernames, explicit cross-profile links, shared organizational email, contradictory observations, duplicate reports, stale clusters and repeatable resume.
+- [x] Generate a bounded set of comparison candidates from exact reported links, shared identifiers and matching profile fields. Common usernames/names alone are weak signals and never automatic merges.
+- [x] Pass relevant prior evidence plus new observations to the LLM. Ask for proposed group membership, supporting references, contradicting references and a short rationale. Reuse batching and request limits from PR 2.
+- [x] Store candidate groups as a versioned derived case assessment referencing a frozen input manifest. Do not rewrite accounts or person ownership. Later scans may create a new cluster revision without invalidating unchanged earlier per-scan triage.
+- [x] Validate member IDs, cited evidence and relationship types. A missing profile field is not a contradiction. Conflicting location alone is not proof of separate people. Repeated reports of one source do not multiply independent support.
+- [x] Show cluster cards, expand-to-members navigation and possible-link graph edges visually distinct from observed links. Keep ambiguous items unassigned or explicitly ambiguous; do not imply calibrated confidence percentages.
+- [x] In CI cover unrelated reused usernames, explicit cross-profile links, shared organizational email, contradictory observations, duplicate reports, stale clusters and repeatable resume.
 
 **Acceptance example:** Two profiles explicitly link to the same personal site and one links to the other. They appear in a suggested group with those links cited. A third profile sharing only the handle stays separate/uncertain. No new search starts.
 
@@ -91,11 +91,11 @@ Review decision: candidate generation selects at most 2,000 pairs and explicitly
 
 **Files:** new `scripts/report.py`, `scripts/osint_cli.py`, new `tests/test_report.py`, README. Reuse existing case data and review text; no additional model call.
 
-- [ ] Add proposed CLI command `osint --report CASE_DIRECTORY` to generate a timestamped report inside that case under the writer lock, without running tools or contacting OpenAI.
-- [ ] Include supplied inputs, tool execution coverage, reviewed/unreviewed counts, candidate groups, conflicting evidence, source references and suggested manual checks.
-- [ ] Separate observations and model hypotheses in the report. Include generation time, reviewed artifact hashes and a manifest describing the snapshot. Hashes detect changed artifacts; they do not prove that a source claim is true.
-- [ ] Escape all untrusted content; use local evidence links and no automatically loaded remote images. Include a print stylesheet.
-- [ ] In CI cover HTML/script injection, missing artifacts, partially reviewed cases and generation with network/API unavailable.
+- [x] Add proposed CLI command `osint --report CASE_DIRECTORY` to generate a timestamped report inside that case under the writer lock, without running tools or contacting OpenAI.
+- [x] Include supplied inputs, tool execution coverage, reviewed/unreviewed counts, candidate groups, conflicting evidence, source references and suggested manual checks.
+- [x] Separate observations and model hypotheses in the report. Include generation time, reviewed artifact hashes and a manifest describing the snapshot. Hashes detect changed artifacts; they do not prove that a source claim is true.
+- [x] Escape all untrusted content; use local evidence links and no automatically loaded remote images. Include a print stylesheet.
+- [x] In CI cover HTML/script injection, missing artifacts, partially reviewed cases and generation with network/API unavailable.
 
 **Acceptance example:** Another analyst can read the brief, distinguish observations from hypotheses, see what remains unchecked and trace each reported connection back to its source.
 

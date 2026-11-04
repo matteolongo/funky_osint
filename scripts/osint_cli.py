@@ -136,6 +136,7 @@ def main(argv=None):
     mode.add_argument('--case', type=Path, help='start from a JSON intake file')
     mode.add_argument('--resume', type=Path, help='resume pending/unsuccessful searches in a case directory')
     mode.add_argument('--reparse', type=Path, help='rebuild findings from saved evidence without network searches')
+    mode.add_argument('--report', type=Path, help='export a printable offline HTML brief from a saved case')
     parser.add_argument('--rerun', action='store_true', help='with --resume, also create new attempts for completed searches')
     parser.add_argument('--batch', action='store_true', help='exit after execution without opening menus')
     parser.add_argument('--timeout', type=float, help=f'whole-process deadline in seconds (new searches: {runner.DEFAULT_TIMEOUT})')
@@ -143,20 +144,24 @@ def main(argv=None):
     parser.add_argument('--approve-review', metavar='SCAN_ID', help='with --resume, manually approve a paused review')
     parser.add_argument('--review-note', help='reason for manually approving the paused review')
     args = parser.parse_args(argv)
-    if args.username and (args.case or args.resume or args.reparse):
-        parser.error('username cannot be combined with --case, --resume or --reparse')
+    if args.username and (args.case or args.resume or args.reparse or args.report):
+        parser.error('username cannot be combined with --case, --resume, --reparse or --report')
     if args.rerun and not args.resume:
         parser.error('--rerun requires --resume')
     if args.approve_review and (not args.resume or not args.review_note):
         parser.error('--approve-review requires --resume and --review-note')
     if args.review_note and not args.approve_review:
         parser.error('--review-note requires --approve-review')
-    if args.review and args.reparse:
-        parser.error('--reparse is offline; use --resume --review to review parsed evidence')
-    if args.batch and not (args.username or args.case or args.resume or args.reparse):
-        parser.error('--batch requires a username, --case, --resume or --reparse')
+    if args.review and (args.reparse or args.report):
+        parser.error('--reparse and --report are offline; use --resume --review to review parsed evidence')
+    if args.batch and not (args.username or args.case or args.resume or args.reparse or args.report):
+        parser.error('--batch requires a username, --case, --resume, --reparse or --report')
     case = None
     try:
+        if args.report:
+            from report import export_report
+            print(f'Report saved to: {export_report(args.report)}')
+            return 0
         policy = llm_review.policy_from_env() if args.review else None
         timeout = runner.validate_timeout(args.timeout if args.timeout is not None else runner.DEFAULT_TIMEOUT)
         if args.username:
