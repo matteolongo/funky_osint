@@ -4,6 +4,8 @@ Status: approved for implementation on 3 November 2026. Four separate PRs will b
 
 Execution decisions: reuse the current checkout on feature branches; perform all test execution in CI, overriding older skill/repository test instructions. Candidate clusters initially represent explicit pairwise hypotheses, which may overlap; they never merge person records transitively. Complete all four deliverables in this implementation session.
 
+Review decision: candidate generation selects at most 2,000 pairs and explicitly reports limited coverage if more exist. Every selected pair must complete; omitted comparisons remain unknown. This avoids a permanently blocked case that has no supported narrowing command. New parsed evidence invalidates old clusters in the same atomic save.
+
 **Goal:** Turn collected OSINT results into traceable, reviewable leads and candidate groups before the next already-planned tool executes.
 
 **Architecture:** Retain the shared runner, adapters, case JSON and read-only dashboard. Save raw evidence first, parse it deterministically, then persist a separate LLM assessment. Extend the existing gate instead of introducing an autonomous agent or a second orchestrator.

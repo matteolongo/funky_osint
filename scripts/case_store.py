@@ -192,6 +192,8 @@ def parse_scan(case, scan_id, adapter):
         scan['parse_error'] = f'{type(error).__name__}: {error}'
     scan['parser_version'] = adapter.parser_version
     scan['parsed_at'] = now()
+    if data.get('cluster_reviews') and any(data.get(key) != original.get(key) for key in ('accounts', 'evidence')):
+        data['cluster_reviews'][-1]['status'] = 'stale'
     save(case, data)
 
 
