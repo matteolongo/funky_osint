@@ -199,7 +199,7 @@ def parse_scan(case, scan_id, adapter):
 
 def export_pivots(case):
     data = load(case)
-    for kind in ('username', 'email'):
+    for kind in ('username', 'email', 'phone'):
         values = sorted({i['value'] for i in data['identifiers'] if i['type'] == kind})
         (case / f'pivot_{kind}s.txt').write_text(''.join(v + '\n' for v in values), encoding='utf-8')
 
