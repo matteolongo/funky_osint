@@ -50,6 +50,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(after['people'], before['people'])
         self.assertEqual(len(after['scans']), 4)
 
+    def test_proposed_searches_run_only_the_selected_lead(self):
+        pivots = self.workspace / 'pivots.txt'
+        pivots.write_text('alice\nbob@example.com\n')
+        result = self.cli(input=f'4\n{pivots}\n6\n1\n6\n\n6\n7\n9\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('1) email bob@example.com - supplied', result.stdout)
+        self.assertIn('2) username alice - supplied', result.stdout)
+        self.assertIn('1) username alice - supplied', result.stdout)
+        self.assertIn('Invalid selection', result.stdout)
+        data = json.loads(next(self.workspace.glob('osint-*/case.json')).read_text())
+        self.assertEqual([s['tool'] for s in data['scans']], ['holehe'])
+        self.assertEqual(data['scans'][0]['input']['value'], 'bob@example.com')
+
     def test_invalid_input_does_not_create_case(self):
         result = self.cli('invalid name', '--batch')
         self.assertNotEqual(result.returncode, 0)

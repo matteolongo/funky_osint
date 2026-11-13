@@ -89,6 +89,9 @@ Or run the script directly:
 2. Runs `holehe` to find registrations/identifiers
 3. Pivot to discovered usernames
 
+### Review proposed searches
+Pivot menu option `6) Review proposed searches` lists every username, email and phone lead that has not been searched yet. Supplied identifiers come first, then leads reported by more distinct tools and attempts, then leads seen in a profile field. Enter the numbers to search (`1,3`), `all`, or leave blank to cancel. Nothing runs without that selection, and leads found by the selected searches are not queued automatically. The order reflects how often a lead was reported, not whether it belongs to the person.
+
 ### Load existing pivots
 `osint` → `4) Load pivots from file` and provide a file with one identifier per line (phone, email, or username). Lines starting with `#` are ignored.
 
