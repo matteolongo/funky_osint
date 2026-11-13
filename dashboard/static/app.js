@@ -257,7 +257,7 @@ function renderDetail(c) {
     }
     if(item.previous_attempt) detail.append(button('View previous attempt',()=>{selectedNode=item.previous_attempt;renderGraph(c);renderDetail(c);}));
     renderReviews(c, item, detail);
-    if(item.checks?.length){const group=document.createElement('div');group.className='observation';group.append(text('h3','Site checks'));const list=document.createElement('dl');list.className='profile-fields';for(const check of item.checks){list.append(text('dt',check.site),text('dd',check.status));}group.append(list);detail.append(group);}
+    if(item.checks?.length){const group=document.createElement('div');group.className='observation';group.append(text('h3','Site checks'));const list=document.createElement('dl');list.className='profile-fields';for(const check of item.checks){list.append(text('dt',check.site),text('dd',check.detail?`${check.status} · ${check.detail}`:check.status));}group.append(list);detail.append(group);}
   }
   if(item.kind==='account') {
     detail.append(text('p','Reported account · Treat as a lead until verified.'));
