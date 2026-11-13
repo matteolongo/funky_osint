@@ -31,7 +31,7 @@ chmod +x "$tmp/bin/ignorant"
 mkdir "$tmp/ignorant-workspace"
 export WORKSPACE="$tmp/ignorant-workspace"
 printf '1\n+1234567890\n+1\n9\n' | bash "$root/scripts/osint-flow.sh" > "$tmp/ignorant-output" 2>&1
-printf '+1\n234567890\n' > "$tmp/expected-args"
+printf '1\n234567890\n' > "$tmp/expected-args"
 cmp "$tmp/expected-args" "$tmp/ignorant-workspace/ignorant-args"
 
 printf '#!/usr/bin/env bash\nprintf "[+] Example: https://example.org/alice\\n"\n' > "$tmp/bin/sherlock"

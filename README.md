@@ -75,8 +75,8 @@ Or run the script directly:
 ### Start from a phone number
 1. `osint` → choose `1) Phone number`
 2. Enter e.g. `+1234567890`
-3. Runs `phoneinfoga`, then asks for the country calling code to run `ignorant`
-4. Discovered usernames/emails appear in the pivot menu - pick any to run `maigret`/`sherlock` or `holehe` on them
+3. Runs `phoneinfoga`, then asks for the country calling code to run `ignorant`; each site Ignorant checks is listed with its result in the scan details
+4. Discovered usernames/emails/phone numbers appear in the pivot menu - pick any to run `maigret`/`sherlock` or `holehe` on them
 5. Keep pivoting as the tool discovers more identifiers
 
 ### Start from a username
@@ -92,7 +92,7 @@ Or run the script directly:
 ### Load existing pivots
 `osint` → `4) Load pivots from file` and provide a file with one identifier per line (phone, email, or username). Lines starting with `#` are ignored.
 
-Imported phone numbers can be selected from the pivot menu. Extracted identifiers are pattern matches and should be verified before treating them as linked accounts.
+Imported phone numbers, and numbers in international format (`+` and digits) found in tool output or profile fields, can be selected from the pivot menu. Partially masked numbers are not extracted. Extracted identifiers are pattern matches and should be verified before treating them as linked accounts.
 
 ### Batch, resume, rerun and reparse
 
@@ -214,7 +214,7 @@ All results are saved under a uniquely named `/workspace/osint-YYYYMMDD_HHMMSS-.
 - A separate raw output file for each scan
 - Structured reports where available (Maigret JSON), exposed as evidence in the dashboard
 - `artifacts/<scan-id>/` for each attempt's additional tool-generated files
-- Pivot lists (`pivot_usernames.txt`, `pivot_emails.txt`)
+- Pivot lists (`pivot_usernames.txt`, `pivot_emails.txt`, `pivot_phones.txt`)
 - Target files for each starting point
 
 The dashboard links an identifier to each search, and a search to accounts explicitly reported by Sherlock or Maigret and to identifiers mentioned in its output. Maigret's recursive searches retain their searched identifier and are hidden by default; select **Include recursive searches** to explore them. Account details and image URLs are shown with their source scan. Profile images load directly from the reported site and may expire or be unavailable. Holehe scan details distinguish reported results, negative results, rate limits, and errors. Recovery hints that Holehe appends to a hit (masked email or phone, full name, creation date) are kept with the check as evidence; masked values are never turned into searchable leads. These links are leads, not proof that identifiers belong to the same person. Select a scan to inspect the underlying output. Output formats from the tools vary, so some results may only appear in the raw output. The workspace is mounted on the host, so results persist after the container stops.
