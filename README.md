@@ -32,6 +32,7 @@ Tool checkouts are stored in the image at `/tools`. Investigation results are ke
 | [maigret](https://github.com/soxoj/maigret) | Deep username profiling across 5900+ sites with recursive search | `maigret` |
 | [holehe](https://github.com/megadose/holehe) | Email -> sites it's registered on | `holehe` |
 | [ignorant](https://github.com/megadose/ignorant) | Phone number -> social accounts/platform registrations | `ignorant` |
+| [socid-extractor](https://github.com/soxoj/socid-extractor) | Profile URL -> identifiers and profile fields published on that page | `socid-extractor` |
 
 ## Quick Start
 
@@ -88,6 +89,13 @@ Or run the script directly:
 1. `osint` → `3) Email` → enter email
 2. Runs `holehe` to find registrations/identifiers
 3. Pivot to discovered usernames
+
+### Start from a social profile URL
+1. `osint` → `6) Social profile URL` → enter e.g. `https://www.instagram.com/example/`
+2. Runs `socid-extractor` on that page only and keeps any identifiers and profile fields it publishes
+3. The handle in the URL becomes a username lead; search it from the pivot menu if you want the username tools to run
+
+Many sites serve little to anonymous requests, so a page can yield nothing beyond the handle. The username search is never started automatically.
 
 ### Review proposed searches
 Pivot menu option `6) Review proposed searches` lists every username, email and phone lead that has not been searched yet. Supplied identifiers come first, then leads reported by more distinct tools and attempts, then leads seen in a profile field. Enter the numbers to search (`1,3`), `all`, or leave blank to cancel. Nothing runs without that selection, and leads found by the selected searches are not queued automatically. The order reflects how often a lead was reported, not whether it belongs to the person.
@@ -206,9 +214,9 @@ Put a JSON file in the host `workspace/` directory, for example `workspace/intak
 }
 ```
 
-Run `docker compose run --rm kali osint --case /workspace/intake.json`. Input types are `phone`, `email`, `username`, and `profile`. Phone numbers use `+` and digits; `country_code` is optional and enables the Ignorant search. Profile URLs are saved for comparison, not automatically searched as usernames: add an explicit `username` input if you want that search. Names are context, not search queries. Each input can include `source` and `notes`; relationship indexes refer to positions in the `people` list, starting at zero.
+Run `docker compose run --rm kali osint --case /workspace/intake.json`. Input types are `phone`, `email`, `username`, and `profile`. Phone numbers use `+` and digits; `country_code` is optional and enables the Ignorant search. Profile URLs are fetched once with `socid-extractor` to collect the identifiers that page publishes, and the handle in the URL is kept as a username lead. They are not automatically searched as usernames: add an explicit `username` input if you want that search. Names are context, not search queries. Each input can include `source` and `notes`; relationship indexes refer to positions in the `people` list, starting at zero.
 
-The run searches the supplied phone numbers, emails and usernames with the available tools, records missing or failed tools, and then opens the existing pivot menu for manual follow-up. It does not automatically search newly extracted leads. In the dashboard, supplied people and relationships are distinguished from possible matches: exact supplied identifiers mentioned in scan output and exact profile URL matches link back to the evidence. These are leads, not identity verification. The intake file contains personal information; keep it in the workspace and do not commit it.
+The run searches the supplied phone numbers, emails, usernames and profile URLs with the available tools, records missing or failed tools, and then opens the existing pivot menu for manual follow-up. It does not automatically search newly extracted leads. In the dashboard, supplied people and relationships are distinguished from possible matches: exact supplied identifiers mentioned in scan output and exact profile URL matches link back to the evidence. These are leads, not identity verification. The intake file contains personal information; keep it in the workspace and do not commit it.
 
 ## Outputs
 
@@ -250,7 +258,7 @@ To fetch fresh upstream versions even when Docker has cached layers, use `docker
 
 **Check installed tools:**
 ```bash
-which phoneinfoga maigret sherlock holehe ignorant osint
+which phoneinfoga maigret sherlock holehe ignorant socid-extractor osint
 ```
 
 **View build output:**

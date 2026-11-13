@@ -26,7 +26,7 @@ def create_case():
 
 def investigate(case, kind, timeout, value=None):
     if value is None:
-        value = input(f'Enter {kind}: ')
+        value = input(f"Enter {'profile URL' if kind == 'profile' else kind}: ")
     item = {'type': kind, 'value': value}
     if kind == 'phone':
         code = input('Country calling code (e.g. +34; blank skips Ignorant): ').strip()
@@ -113,16 +113,17 @@ def pivot_menu(case, timeout):
         print('1) Investigate a discovered username\n2) Investigate a discovered email\n'
               '3) Investigate a new username\n4) Investigate a new email\n'
               '5) Investigate a phone number\n6) Review proposed searches (ranked unsearched leads)\n'
-              '7) View results so far\n8) Back to main menu\n9) Exit\n10) Investigate a discovered phone')
-        choice = input('Choice [1-10]: ')
+              '7) View results so far\n8) Back to main menu\n9) Exit\n10) Investigate a discovered phone\n'
+              '11) Investigate a social profile URL')
+        choice = input('Choice [1-11]: ')
         try:
             if choice in ('1', '2', '10'):
                 kind = {'1': 'username', '2': 'email', '10': 'phone'}[choice]
                 value = select_identifier(case, kind)
                 if value:
                     investigate(case, kind, timeout, value)
-            elif choice in ('3', '4', '5'):
-                investigate(case, {'3': 'username', '4': 'email', '5': 'phone'}[choice], timeout)
+            elif choice in ('3', '4', '5', '11'):
+                investigate(case, {'3': 'username', '4': 'email', '5': 'phone', '11': 'profile'}[choice], timeout)
             elif choice == '6':
                 propose_searches(case, timeout)
             elif choice == '7':
@@ -140,11 +141,11 @@ def pivot_menu(case, timeout):
 
 def main_menu(case, timeout):
     while True:
-        print(f'\nOSINT investigation\nCase: {case}\n1) Phone number\n2) Username\n3) Email\n4) Load pivots from file\n5) Exit')
-        choice = input('Choice [1-5]: ')
+        print(f'\nOSINT investigation\nCase: {case}\n1) Phone number\n2) Username\n3) Email\n4) Load pivots from file\n5) Exit\n6) Social profile URL')
+        choice = input('Choice [1-6]: ')
         try:
-            if choice in ('1', '2', '3'):
-                investigate(case, {'1': 'phone', '2': 'username', '3': 'email'}[choice], timeout)
+            if choice in ('1', '2', '3', '6'):
+                investigate(case, {'1': 'phone', '2': 'username', '3': 'email', '6': 'profile'}[choice], timeout)
             elif choice == '4':
                 import_pivots(case, input('Path to pivots file: '))
             elif choice == '5':

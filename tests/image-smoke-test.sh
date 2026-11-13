@@ -4,14 +4,14 @@ set -eu
 image=${1:-osint_me:local}
 docker run --rm --entrypoint bash "$image" -c '
     set -eu
-    for tool in phoneinfoga sherlock maigret holehe ignorant; do
+    for tool in phoneinfoga sherlock maigret holehe ignorant socid-extractor; do
         "$tool" --help >/dev/null 2>&1
     done
-    for tool in sherlock maigret holehe ignorant; do
+    for tool in sherlock maigret holehe ignorant socid-extractor; do
         /opt/tools/$tool/bin/python -m pip check
         test "$(readlink /usr/local/bin/$tool)" = "/opt/tools/$tool/bin/$tool"
     done
-    python3 -c "import json; d=json.load(open(\"/tools/versions.json\")); assert len(d)==5; assert all(len(t[\"revision\"])==40 for t in d.values())"
+    python3 -c "import json; d=json.load(open(\"/tools/versions.json\")); assert len(d)==6; assert all(len(t[\"revision\"])==40 for t in d.values())"
     export TERM=xterm WORKSPACE=/tmp/osint-test
     printf "alice\nalice@example.com\n" > /tmp/pivots
     printf "4\n/tmp/pivots\n9\n" | osint >/dev/null

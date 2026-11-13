@@ -87,3 +87,20 @@ tools:
       cmds:
         - pip3 install --no-cache-dir .
     check_bin: ignorant
+
+  - name: socid-extractor
+    repo: https://github.com/soxoj/socid-extractor.git
+    ref: 191d7347bcdafaab0b1d0f92493d08a33d2a6e4a
+    python_env: true
+    dest: /tools/socid-extractor
+    enabled: true
+    build:
+      apt_deps:
+        - git
+        - python3
+        - python3-pip
+        - python3-venv
+      pre_cmds: []
+      cmds:
+        - pip3 install --no-cache-dir .
+    check_bin: socid-extractor
