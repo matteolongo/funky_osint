@@ -88,3 +88,30 @@ class EvidenceTests(unittest.TestCase):
                              [('one.txt', 2), ('two.txt', 2)])
             self.assertEqual(parsed['evidence'][0]['value'], 'https://EXAMPLE.org/A')
             self.assertNotEqual(parsed['evidence'][0]['id'], parsed['evidence'][1]['id'])
+
+    def test_holehe_hits_keep_recovery_hints_without_masked_leads(self):
+        data = {'identifiers': [{'id': 'target', 'type': 'email', 'value': 'a@example.org'}],
+                'accounts': [], 'scans': [], 'relationships': []}
+        scan = {'id': 'scan', 'target': 'target',
+                'artifact': {'filename': 'output.txt', 'artifact_sha256': 'hash'}}
+        TOOLS['holehe'].parse(data, scan, 'a@example.org\n[+] one.example\n'
+                              '[+] two.example j***e@mail.example / +39 *** 12 / FullName Jo Doe\n'
+                              '[+] three.example / +39 *** 34\n[-] four.example\n'
+                              '[!] five.example Error message: blocked\n'
+                              '[+] six.example full@mail.example\n')
+        self.assertEqual(scan['checks'], [
+            {'site': 'one.example', 'status': 'reported'},
+            {'site': 'two.example', 'status': 'reported',
+             'detail': 'j***e@mail.example / +39 *** 12 / FullName Jo Doe'},
+            {'site': 'three.example', 'status': 'reported', 'detail': '/ +39 *** 34'},
+            {'site': 'four.example', 'status': 'not reported'},
+            {'site': 'five.example', 'status': 'error', 'detail': 'Error message: blocked'},
+            {'site': 'six.example', 'status': 'reported', 'detail': 'full@mail.example'}])
+        hints = [(e['kind'], e['value'], e['line'], e['field']) for e in data['evidence']
+                 if e['kind'] not in ('check', 'email')]
+        self.assertEqual(hints, [('recovery_email', 'j***e@mail.example', 3, 'two.example'),
+                                 ('recovery_phone', '+39 *** 12', 3, 'two.example'),
+                                 ('reported_name', 'Jo Doe', 3, 'two.example'),
+                                 ('recovery_phone', '+39 *** 34', 4, 'three.example'),
+                                 ('recovery_email', 'full@mail.example', 7, 'six.example')])
+        self.assertEqual([i['value'] for i in data['identifiers']], ['a@example.org', 'full@mail.example'])
