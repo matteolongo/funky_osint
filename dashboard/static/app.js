@@ -105,7 +105,8 @@ function renderIntake(c) {
     }
   }
   for (const person of c.people) for (const input of person.inputs.filter(i => i.type === 'profile')) {
-    for (const account of c.accounts.filter(a => a.url === input.value)) {
+    // The supplied profile's own page scan is not an independent report of that account.
+    for (const account of c.accounts.filter(a => a.url === input.value && (a.observations || []).some(o => c.scans.find(s => s.id === o.scan_id)?.target !== input.identifier_id))) {
       panel.append(button(`Supplied profile for ${person.name} matches a reported account · ${account.url} · view sources`, () => { selectedNode = account.id; renderGraph(c); renderDetail(c); }));
     }
   }
@@ -257,7 +258,7 @@ function renderDetail(c) {
     }
     if(item.previous_attempt) detail.append(button('View previous attempt',()=>{selectedNode=item.previous_attempt;renderGraph(c);renderDetail(c);}));
     renderReviews(c, item, detail);
-    if(item.checks?.length){const group=document.createElement('div');group.className='observation';group.append(text('h3','Site checks'));const list=document.createElement('dl');list.className='profile-fields';for(const check of item.checks){list.append(text('dt',check.site),text('dd',check.status));}group.append(list);detail.append(group);}
+    if(item.checks?.length){const group=document.createElement('div');group.className='observation';group.append(text('h3','Site checks'));const list=document.createElement('dl');list.className='profile-fields';for(const check of item.checks){list.append(text('dt',check.site),text('dd',check.detail?`${check.status} · ${check.detail}`:check.status));}group.append(list);detail.append(group);}
   }
   if(item.kind==='account') {
     detail.append(text('p','Reported account · Treat as a lead until verified.'));

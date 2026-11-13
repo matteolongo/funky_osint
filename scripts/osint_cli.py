@@ -26,7 +26,7 @@ def create_case():
 
 def investigate(case, kind, timeout, value=None):
     if value is None:
-        value = input(f'Enter {kind}: ')
+        value = input(f"Enter {'profile URL' if kind == 'profile' else kind}: ")
     item = {'type': kind, 'value': value}
     if kind == 'phone':
         code = input('Country calling code (e.g. +34; blank skips Ignorant): ').strip()
@@ -68,6 +68,42 @@ def select_identifier(case, kind):
     return None
 
 
+def propose_searches(case, timeout):
+    proposals = store.proposed_searches(store.load(case))
+    if not proposals:
+        print('No unsearched leads.')
+        return
+    print('Proposed searches (unverified leads, most independently reported first):')
+    for index, proposal in enumerate(proposals, 1):
+        support = [f"{proposal['reports']} report(s) from {', '.join(proposal['tools'])}"] if proposal['tools'] else []
+        if proposal['supplied']:
+            support.insert(0, 'supplied')
+        if proposal['profile_field']:
+            support.append('seen in a profile field')
+        print(f"{index}) {proposal['type']} {proposal['value']} - {'; '.join(support) or 'no tool report'}")
+    choice = input('Numbers to search (e.g. 1,3), "all", or blank to cancel: ').strip().lower()
+    if not choice:
+        return
+    numbers = [part.strip() for part in choice.split(',')]
+    if choice == 'all':
+        selected = proposals
+    elif all(n.isdigit() and 1 <= int(n) <= len(proposals) for n in numbers):
+        selected = [proposals[int(n) - 1] for n in dict.fromkeys(numbers)]
+    else:
+        print('Invalid selection; nothing was searched.')
+        return
+    inputs = []
+    for proposal in selected:
+        item = {'type': proposal['type'], 'value': proposal['value']}
+        if item['type'] == 'phone':
+            code = input(f"Country calling code for {item['value']} (e.g. +34; blank skips Ignorant): ").strip()
+            if code:
+                item['country_code'] = code
+        inputs.append(store.validate_input(item))
+    # Snapshot only: discoveries from these searches are not automatically queued.
+    runner.run_targets(case, inputs, timeout)
+
+
 def pivot_menu(case, timeout):
     while True:
         data = store.load(case)
@@ -76,27 +112,20 @@ def pivot_menu(case, timeout):
             print(f"{kind}: " + ', '.join(sorted({i['value'] for i in data['identifiers'] if i['type'] == kind})))
         print('1) Investigate a discovered username\n2) Investigate a discovered email\n'
               '3) Investigate a new username\n4) Investigate a new email\n'
-              '5) Investigate a phone number\n6) Search all current username/email leads\n'
-              '7) View results so far\n8) Back to main menu\n9) Exit\n10) Investigate a discovered phone')
-        choice = input('Choice [1-10]: ')
+              '5) Investigate a phone number\n6) Review proposed searches (ranked unsearched leads)\n'
+              '7) View results so far\n8) Back to main menu\n9) Exit\n10) Investigate a discovered phone\n'
+              '11) Investigate a social profile URL')
+        choice = input('Choice [1-11]: ')
         try:
             if choice in ('1', '2', '10'):
                 kind = {'1': 'username', '2': 'email', '10': 'phone'}[choice]
                 value = select_identifier(case, kind)
                 if value:
                     investigate(case, kind, timeout, value)
-            elif choice in ('3', '4', '5'):
-                investigate(case, {'3': 'username', '4': 'email', '5': 'phone'}[choice], timeout)
+            elif choice in ('3', '4', '5', '11'):
+                investigate(case, {'3': 'username', '4': 'email', '5': 'phone', '11': 'profile'}[choice], timeout)
             elif choice == '6':
-                # Snapshot only: discoveries from these searches are not automatically queued.
-                inputs = []
-                for item in data['identifiers']:
-                    if item['type'] in ('username', 'email'):
-                        try:
-                            inputs.append(store.validate_input(item))
-                        except ValueError:
-                            print(f"Skipping invalid lead: {item['value']}")
-                runner.run_targets(case, inputs, timeout)
+                propose_searches(case, timeout)
             elif choice == '7':
                 print(f'Results: {case}')
                 for scan in data['scans']:
@@ -112,11 +141,11 @@ def pivot_menu(case, timeout):
 
 def main_menu(case, timeout):
     while True:
-        print(f'\nOSINT investigation\nCase: {case}\n1) Phone number\n2) Username\n3) Email\n4) Load pivots from file\n5) Exit')
-        choice = input('Choice [1-5]: ')
+        print(f'\nOSINT investigation\nCase: {case}\n1) Phone number\n2) Username\n3) Email\n4) Load pivots from file\n5) Exit\n6) Social profile URL')
+        choice = input('Choice [1-6]: ')
         try:
-            if choice in ('1', '2', '3'):
-                investigate(case, {'1': 'phone', '2': 'username', '3': 'email'}[choice], timeout)
+            if choice in ('1', '2', '3', '6'):
+                investigate(case, {'1': 'phone', '2': 'username', '3': 'email', '6': 'profile'}[choice], timeout)
             elif choice == '4':
                 import_pivots(case, input('Path to pivots file: '))
             elif choice == '5':

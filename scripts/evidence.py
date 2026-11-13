@@ -6,13 +6,16 @@ from bisect import bisect_left
 from urllib.parse import urlsplit
 
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+# International format only; a number followed by a mask (*) is partial and not a lead.
+PHONE = re.compile(r'(?<![\w+*])\+[1-9](?:[ ().-]{0,2}[0-9]){6,14}(?!\s?[0-9*])')
 FOUND = re.compile(r'^\s*\[\+\]\s*([^:]+):\s*(https?://\S+)', re.I)
-EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+# A preceding * marks a masked address; its visible tail is not an address.
+EMAIL = re.compile(r'(?<![A-Za-z0-9._%+*-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
 USERNAME = re.compile(r'\busername["\s]*[:=]\s*["\']?([A-Za-z0-9_.-]+)', re.I)
 MENTION = re.compile(r'(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_.-]+)')
 SEARCH = re.compile(r'^\s*\[\*\]\s*Checking\s+(username|[A-Za-z0-9_]+_id)\s+(.+?)\s+on:\s*$', re.I)
 FIELD = re.compile(r'^\s*[├└]─([A-Za-z0-9_]+):\s*(.*)$')
-HOLEHE = re.compile(r'^\s*\[([+x!\-])\]\s+([A-Za-z0-9.-]+\.[A-Za-z]{2,})\s*$', re.I)
+HOLEHE = re.compile(r'^\s*\[([+x!\-])\]\s+([A-Za-z0-9.-]+\.[A-Za-z]{2,})(?:\s+(.*\S))?\s*$', re.I)
 
 
 def ensure_identifier(data, kind, value):
@@ -54,13 +57,15 @@ def record_evidence(data, scan, kind, value, **location):
 
 def add_mentions(data, scan, content, handles=True, first_line=None, fields=None, **location):
     newlines = [match.start() for match in re.finditer('\n', content)] if first_line is not None else []
-    patterns = [('email', EMAIL), ('username', USERNAME)]
+    patterns = [('email', EMAIL), ('username', USERNAME), ('phone', PHONE)]
     if handles:
         patterns.append(('username', MENTION))
     seen = set()
     for kind, pattern in patterns:
         for match in pattern.finditer(content):
             value = match.group(match.lastindex or 0)
+            if kind == 'phone':
+                value = '+' + re.sub(r'\D', '', value)
             source = location.copy()
             if first_line is not None:
                 start = bisect_left(newlines, match.start())
