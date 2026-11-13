@@ -197,6 +197,29 @@ def parse_scan(case, scan_id, adapter):
     save(case, data)
 
 
+def proposed_searches(data):
+    """Rank leads that no attempt has searched. Ordering is advice only; nothing is scheduled."""
+    scans = {s['id']: s for s in data['scans']}
+    searched = {s['target'] for s in data['scans'] if not s.get('parent_scan')}
+    proposals = []
+    for identifier in data['identifiers']:
+        if identifier['type'] not in ('username', 'email', 'phone') or identifier['id'] in searched:
+            continue
+        try:
+            item = validate_input({'type': identifier['type'], 'value': identifier['value']})
+        except ValueError:
+            continue
+        # Repeated output of one attempt is a single report, not independent support.
+        attempts = {scans[r['source']].get('parent_scan', r['source']) for r in data['relationships']
+                    if r['target'] == identifier['id'] and r['source'] in scans}
+        proposals.append({**item, 'supplied': bool(identifier.get('supplied')), 'reports': len(attempts),
+                          'tools': sorted({scans[a]['tool'] for a in attempts if a in scans}),
+                          'profile_field': any(e.get('identifier_id') == identifier['id'] and e.get('account_id')
+                                               for e in data.get('evidence', []))})
+    return sorted(proposals, key=lambda p: (not p['supplied'], -len(p['tools']), -p['reports'],
+                                            not p['profile_field'], p['type'], p['value']))
+
+
 def export_pivots(case):
     data = load(case)
     for kind in ('username', 'email', 'phone'):

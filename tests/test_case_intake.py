@@ -28,6 +28,24 @@ class CaseIntakeTests(unittest.TestCase):
             self.assertEqual(data['people'][1]['inputs'][0]['value'], '+34123456789')
             self.assertEqual(data['person_relationships'][0]['source'], 'user supplied')
 
+    def test_proposed_searches_rank_unsearched_leads_by_independent_reports(self):
+        identifiers = [{'id': i, 'type': t, 'value': v} for i, t, v in [
+            ('done', 'username', 'searched'), ('one', 'username', 'once'), ('two', 'email', 'two@example.org'),
+            ('own', 'username', 'imported'), ('bad', 'email', 'e@'), ('url', 'profile', 'https://example.org/a'),
+            ('field', 'username', 'in_profile')]]
+        identifiers[3]['supplied'] = True
+        scans = [{'id': 'a', 'target': 'done', 'tool': 'maigret'}, {'id': 'b', 'target': 'done', 'tool': 'sherlock'},
+                 {'id': 'child', 'target': 'one', 'tool': 'maigret', 'parent_scan': 'a'}]
+        relationships = [{'source': s, 'target': t} for s, t in [
+            ('a', 'one'), ('child', 'one'), ('a', 'two'), ('b', 'two'), ('a', 'field'), ('a', 'bad'), ('a', 'done')]]
+        evidence = [{'identifier_id': 'field', 'account_id': 'account'}, {'identifier_id': 'one'}]
+        proposals = store.proposed_searches({'identifiers': identifiers, 'scans': scans,
+                                             'relationships': relationships, 'evidence': evidence})
+        self.assertEqual([(p['value'], p['reports'], p['tools']) for p in proposals], [
+            ('imported', 0, []), ('two@example.org', 2, ['maigret', 'sherlock']),
+            ('in_profile', 1, ['maigret']), ('once', 1, ['maigret'])])
+        self.assertEqual([p['profile_field'] for p in proposals], [False, False, True, False])
+
     def test_invalid_intake_does_not_write_case(self):
         with tempfile.TemporaryDirectory() as tmp:
             case = Path(tmp)

@@ -105,7 +105,8 @@ function renderIntake(c) {
     }
   }
   for (const person of c.people) for (const input of person.inputs.filter(i => i.type === 'profile')) {
-    for (const account of c.accounts.filter(a => a.url === input.value)) {
+    // The supplied profile's own page scan is not an independent report of that account.
+    for (const account of c.accounts.filter(a => a.url === input.value && (a.observations || []).some(o => c.scans.find(s => s.id === o.scan_id)?.target !== input.identifier_id))) {
       panel.append(button(`Supplied profile for ${person.name} matches a reported account · ${account.url} · view sources`, () => { selectedNode = account.id; renderGraph(c); renderDetail(c); }));
     }
   }

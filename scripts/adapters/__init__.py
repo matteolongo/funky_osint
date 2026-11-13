@@ -13,9 +13,9 @@ class Tool:
     report_name: Callable | None = None
 
 
-from . import holehe, ignorant, maigret, phoneinfoga, sherlock
+from . import holehe, ignorant, maigret, phoneinfoga, sherlock, socid_extractor
 
 TOOLS = {module.NAME: Tool(module.NAME, module.KIND, module.arguments, module.parse,
                           parser_version=getattr(module, 'PARSER_VERSION', 2),
                           report_name=getattr(module, 'report_name', None))
-         for module in (maigret, sherlock, holehe, phoneinfoga, ignorant)}
+         for module in (maigret, sherlock, holehe, phoneinfoga, ignorant, socid_extractor)}
